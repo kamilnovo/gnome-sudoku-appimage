@@ -10,35 +10,31 @@ cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 echo "Repo root: $REPO_ROOT"
 
-rm -rf "$APPDIR" "$PROJECT_DIR"
+rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest gtk-dest
 mkdir -p "$APPDIR"
 
-# 1. Ensure blueprint-compiler is available
-if ! command -v blueprint-compiler &> /dev/null; then
-    echo "=== Building blueprint-compiler ==-"
-    git clone --depth 1 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
-    cd blueprint-compiler
-    python3 -m venv venv_blueprint
-    source venv_blueprint/bin/activate
-    pip install meson ninja
-    meson setup build --prefix=/usr
-    DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
-    export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-    export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$REPO_ROOT/blueprint-dest/usr/lib/python3.12/site-packages:$PYTHONPATH"
+# Helper for building deps
+build_dep() {
+    local name=$1 url=$2 version=$3 dest=$4
+    echo "=== Building $name $version ==-"
+    git clone --depth 1 --branch "$version" "$url" "$name-src"
+    cd "$name-src"
+    meson setup build --prefix=/usr --libdir=lib
+    DESTDIR="$dest" meson install -C build
+    export PKG_CONFIG_PATH="$dest/usr/lib/pkgconfig:$PKG_CONFIG_PATH"
+    export LD_LIBRARY_PATH="$dest/usr/lib:$LD_LIBRARY_PATH"
+    export PATH="$dest/usr/bin:$PATH"
     cd "$REPO_ROOT"
-else
-    echo "blueprint-compiler already installed."
-fi
+}
+
+# 1. Build dependencies from source
+build_dep "blueprint-compiler" "https://gitlab.gnome.org/jwestman/blueprint-compiler.git" "v0.16.0" "$REPO_ROOT/blueprint-dest"
+build_dep "gtk" "https://gitlab.gnome.org/GNOME/gtk.git" "4.14.4" "$REPO_ROOT/gtk-dest"
+build_dep "libadwaita" "https://gitlab.gnome.org/GNOME/libadwaita.git" "v1.5.0" "$REPO_ROOT/gtk-dest"
 
 # 2. Build gnome-sudoku
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
-
-echo "=== Patching dependencies for Ubuntu 24.04 ==-"
-sed -i "s/glib_version = '2.80.0'/glib_version = '2.79.0'/g" "$PROJECT_DIR/meson.build"
-sed -i "s/gtk4', version: '>= 4.18.0'/gtk4', version: '>= 4.14.0'/g" "$PROJECT_DIR/meson.build"
-sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.5'/g" "$PROJECT_DIR/meson.build"
-
 cd "$PROJECT_DIR"
 echo "=== Building gnome-sudoku ==-"
 meson setup build --prefix=/usr -Dbuildtype=release
@@ -46,27 +42,16 @@ meson compile -C build
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 3. Robust GIO modules
-mkdir -p "$APPDIR/usr/lib/gio/modules"
-GIO_MOD_PATHS=("/usr/lib/x86_64-linux-gnu/gio/modules" "/usr/lib64/gio/modules" "/usr/lib/gio/modules")
-for p in "${GIO_MOD_PATHS[@]}"; do
-    if [ -d "$p" ]; then
-        cp -a "$p"/libgiognutls.so "$APPDIR/usr/lib/gio/modules/" 2>/dev/null || true
-        cp -a "$p"/libdconfsettings.so "$APPDIR/usr/lib/gio/modules/" 2>/dev/null || true
-    fi
-done
-
-# 4. Package
+# 3. Bundle everything with linuxdeploy
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-chmod +x linuxdeploy
+wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
+chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
 
-# Find the desktop file and icon
-DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
-ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
+# Copy built libs to AppDir
+cp -a "$REPO_ROOT/gtk-dest/usr/lib"/* "$APPDIR/usr/lib/" 2>/dev/null || true
 
 export VERSION
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"} \
+    --plugin gtk \
     --output appimage

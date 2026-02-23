@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04
     permissions:
       contents: write
     steps:
@@ -18,23 +18,25 @@ jobs:
           sudo apt update
           sudo DEBIAN_FRONTEND=noninteractive apt install -y \
             build-essential \
-            meson \
+            python3-pip \
+            python3-setuptools \
+            python3-venv \
             ninja-build \
             pkg-config \
             wget \
             git \
             valac \
-            libgtk-4-dev \
-            libadwaita-1-dev \
             libgee-0.8-dev \
             libjson-glib-dev \
             libqqwing-dev \
             yelp-tools \
             gettext \
-            blueprint-compiler \
             libxml2-utils \
             desktop-file-utils \
-            libgirepository1.0-dev
+            libgirepository1.0-dev \
+            libglib2.0-dev
+          pip3 install --user --upgrade meson ninja
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
       - name: Upload AppImage artifact
