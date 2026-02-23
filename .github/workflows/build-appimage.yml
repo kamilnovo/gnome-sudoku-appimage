@@ -16,8 +16,25 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y build-essential meson ninja-build pkg-config wget git valac \
-            libgtk-4-dev libadwaita-1-dev libgee-0.8-dev libjson-glib-dev libqqwing-dev yelp-tools gettext blueprint-compiler
+          sudo apt install -y \
+            build-essential \
+            meson \
+            ninja-build \
+            pkg-config \
+            wget \
+            git \
+            vala \
+            libgtk-4-dev \
+            libadwaita-1-dev \
+            libgee-0.8-dev \
+            libjson-glib-dev \
+            libqqwing-dev \
+            yelp-tools \
+            gettext \
+            blueprint-compiler \
+            libxml2-utils \
+            desktop-file-utils \
+            libgirepository1.0-dev
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
       - name: Upload AppImage artifact

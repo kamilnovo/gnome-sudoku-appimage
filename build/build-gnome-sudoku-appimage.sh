@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+export APPIMAGE_EXTRACT_AND_RUN=1
 VERSION="49.4"
 REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
@@ -9,21 +10,25 @@ cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 echo "Repo root: $REPO_ROOT"
 
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-compiler
+rm -rf "$APPDIR" "$PROJECT_DIR"
 mkdir -p "$APPDIR"
 
-# 1. Build blueprint-compiler from source (not on PyPI)
-echo "=== Building blueprint-compiler ==-"
-git clone --depth 1 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
-cd blueprint-compiler
-python3 -m venv venv_blueprint
-source venv_blueprint/bin/activate
-pip install meson ninja
-meson setup build --prefix=/usr
-meson install -C build DESTDIR="$REPO_ROOT/blueprint-dest"
-export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$REPO_ROOT/blueprint-dest/usr/lib/python3.12/site-packages:$PYTHONPATH"
-cd "$REPO_ROOT"
+# 1. Ensure blueprint-compiler is available
+if ! command -v blueprint-compiler &> /dev/null; then
+    echo "=== Building blueprint-compiler ==-"
+    git clone --depth 1 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+    cd blueprint-compiler
+    python3 -m venv venv_blueprint
+    source venv_blueprint/bin/activate
+    pip install meson ninja
+    meson setup build --prefix=/usr
+    DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
+    export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
+    export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$REPO_ROOT/blueprint-dest/usr/lib/python3.12/site-packages:$PYTHONPATH"
+    cd "$REPO_ROOT"
+else
+    echo "blueprint-compiler already installed."
+fi
 
 # 2. Build gnome-sudoku
 echo "=== Fetching gnome-sudoku $VERSION ==-"
@@ -54,5 +59,14 @@ done
 # 4. Package
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 chmod +x linuxdeploy
+
+# Find the desktop file and icon
+DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
+ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
+
 export VERSION
-./linuxdeploy --appdir "$APPDIR" -e "$APPDIR/usr/bin/gnome-sudoku" --output appimage
+./linuxdeploy --appdir "$APPDIR" \
+    -e "$APPDIR/usr/bin/gnome-sudoku" \
+    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
+    --output appimage
