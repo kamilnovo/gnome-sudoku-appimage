@@ -18,7 +18,9 @@ jobs:
           sudo apt update
           sudo DEBIAN_FRONTEND=noninteractive apt install -y \
             build-essential \
-            meson \
+            python3-pip \
+            python3-setuptools \
+            python3-venv \
             ninja-build \
             pkg-config \
             wget \
@@ -36,6 +38,7 @@ jobs:
             libgirepository1.0-dev \
             blueprint-compiler \
             libglib2.0-dev
+          sudo pip3 install --upgrade meson
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
       - name: Upload AppImage artifact
