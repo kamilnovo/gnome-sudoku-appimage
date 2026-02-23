@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-VERSION="46.0"
+VERSION="47.3"
 REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
