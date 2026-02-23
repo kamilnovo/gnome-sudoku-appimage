@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-VERSION="47.3"
+VERSION="49.4"
 REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
@@ -14,6 +14,12 @@ mkdir -p "$APPDIR"
 
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
+
+# Patch dependencies to match Ubuntu 24.04
+echo "=== Patching dependencies for Ubuntu 24.04 ==-"
+sed -i "s/glib_version = '2.80.0'/glib_version = '2.79.0'/g" "$PROJECT_DIR/meson.build"
+sed -i "s/gtk4', version: '>= 4.18.0'/gtk4', version: '>= 4.14.0'/g" "$PROJECT_DIR/meson.build"
+sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.5'/g" "$PROJECT_DIR/meson.build"
 
 # Setup Meson
 python3 -m venv venv_build
