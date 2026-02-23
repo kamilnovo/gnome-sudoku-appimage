@@ -24,7 +24,7 @@ sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.5'/g" "
 # Setup Meson
 python3 -m venv venv_build
 source venv_build/bin/activate
-pip install meson ninja
+pip install meson ninja blueprint-compiler
 
 cd "$PROJECT_DIR"
 echo "=== Building gnome-sudoku ==-"
