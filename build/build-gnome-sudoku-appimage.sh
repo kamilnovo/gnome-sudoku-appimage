@@ -12,7 +12,7 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
 mkdir -p "$APPDIR"
 
-# 1. Build blueprint-compiler (Debian 12 doesn't have it)
+# 1. Build blueprint-compiler
 echo "=== Building blueprint-compiler ==-"
 git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
 cd blueprint-compiler
@@ -27,61 +27,69 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Patch for Debian 12 libraries (GTK 4.8, Libadwaita 1.2)
-# This is a massive downgrade, but it's the only way to avoid building the whole world
 echo "=== Patching Sudoku for Debian 12 ==-"
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-echo "=== Verified patched meson.build ==-"
-grep -E "glib_version|gtk4|libadwaita-1" "$PROJECT_DIR/meson.build"
-
 # Patch blueprints for older Libadwaita
-# Adw.ToolbarView (1.4+) -> Gtk.Box + Adw.HeaderBar
+# Adw.Bin (gone in 1.2) -> Box
+sed -i 's/Adw.Bin/Box/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/Adw.Bin/Box/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/Adw.Bin/Box/g' "$PROJECT_DIR/src/blueprints/menu-button.blp" || true
+
+# Adw.ToolbarView (1.4+) -> Box
 sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Adw.WindowTitle (1.4+) -> Label
-# Need to also change "title:" to "label:" inside these
 sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-# Surgical replacement of title: with label: only within the WindowTitle replacement area
-# For simplicity, we just replace title: with label: in the whole file since it's safe here
-sed -i '/Label windowtitle {/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i '/Label windowtitle {/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 
-# Remove "content:" property label surgically (Adw.Bin grid_bin needs to be a child of Box)
-sed -i 's/content: \(.*\){/\1{/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/content: \(.*\){/\1{/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/content: \(.*\){/\1{/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+# Remove Slot labels [top], [bottom], etc. (only valid for specific widgets)
+sed -i 's/\[top\]//g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/\[top\]//g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/\[top\]//g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i 's/\[bottom\]//g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/\[bottom\]//g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/\[bottom\]//g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+
+# Property labels
+sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i 's/child: //g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+
+# Map title: to label: for Label widgets
+sed -i '/Label/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/Label/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 
 # Remove other new properties
 sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i '/centering-policy: strict;/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i '/centering-policy: strict;/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-
-# Downgrade Dialogs
-sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
-sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/centering-policy:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/centering-policy:/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
 sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
-# Patch Vala code
-# 1. Disable set_accent_color logic (needs Libadwaita 1.6+)
-# We replace the body content with just a return statement
-sed -i '/void set_accent_color ()/,/}/ s/var color = style_manager.get_accent_color ();/return;/' "$PROJECT_DIR/src/window.vala" || true
-# Comment out lines that might still cause semantic errors even after return
-sed -i 's/accent_provider.load_from_string(s);/\/\/patched/' "$PROJECT_DIR/src/window.vala" || true
+# Downgrade Dialogs
+sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
+sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
-# 2. Fix Adw.Dialog vs Adw.Window in window.vala (the .blp template change needs Vala change)
+# Patch Vala code
+# Disable call to set_accent_color
+sed -i 's/set_accent_color ();/\/\/set_accent_color ();/g' "$PROJECT_DIR/src/window.vala" || true
+# Dummy the function to avoid errors
+sed -i 's/var color = style_manager.get_accent_color ();/return;/' "$PROJECT_DIR/src/window.vala" || true
+
+# Fix Dialog inheritance in Vala
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala" || true
 
-# 3. C++ fixes
+# C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 
