@@ -36,12 +36,6 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     echo "Patching $f..."
     
-    # Remove 'using Adw 1;' to avoid warnings/confusion
-    sed -i '/using Adw 1;/d' "$f"
-
-    # Surgical removal of content/child property wrappers using Perl for nested-brace awareness
-    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g' "$f"
-
     # Downgrade widgets
     sed -i 's/Adw.ToolbarView/Box/g' "$f"
     sed -i 's/Adw.WindowTitle/Label/g' "$f"
@@ -50,10 +44,16 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i 's/Adw.SwitchRow/Adw.ActionRow/g' "$f"
     sed -i 's/Adw.SpinRow/Adw.ActionRow/g' "$f"
 
-    # Fix property names for downgraded Label (formerly Adw.WindowTitle)
+    # Surgical removal of content/child property wrappers using Perl for nested-brace awareness
+    # This now accounts for optional IDs: Type ID { ... }
+    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g' "$f"
+
+    # Map title: to label: for downgraded Labels (account for IDs)
+    perl -0777 -pi -e 's/Label\s+[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#title:#label:#g; "Label {$c}"/ge' "$f"
+    # Also catch those without IDs
     perl -0777 -pi -e 's/Label\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#title:#label:#g; "Label {$c}"/ge' "$f"
 
-    # Remove incompatible blocks (like Adjustment which belonged to SpinRow)
+    # Remove incompatible blocks (Adjustment was child of SpinRow)
     perl -0777 -pi -e 's/adjustment:\s*Adjustment\s*\{((?:[^{}]|\{(?1)\})*)\};//g' "$f"
     
     # Remove incompatible properties
