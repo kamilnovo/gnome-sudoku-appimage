@@ -12,7 +12,18 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR"
 mkdir -p "$APPDIR"
 
-# 1. Fetch source
+# 1. Build blueprint-compiler from source (Ubuntu 24.04 version is too old)
+echo "=== Building blueprint-compiler ==-"
+git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+cd blueprint-compiler
+meson setup build --prefix=/usr
+DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
+export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
+export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
+cd "$REPO_ROOT"
+
+# 2. Fetch source
+echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 2. Patch for Ubuntu 24.04 libraries (GLib 2.80, GTK 4.14)
