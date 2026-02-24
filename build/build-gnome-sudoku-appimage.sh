@@ -41,22 +41,21 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i 's/Adw.WindowTitle/Label/g' "$f"
     sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
     sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
+    sed -i 's/Adw.SwitchRow/Gtk.CheckButton/g' "$f"
+    sed -i 's/Adw.SpinRow/Adw.ActionRow/g' "$f"
     
-    # Remove slot labels [top], [bottom], etc.
+    # Remove slot labels that are incompatible with Box
     sed -i 's/\[top\]//g' "$f"
     sed -i 's/\[bottom\]//g' "$f"
-    sed -i 's/\[start\]//g' "$f"
-    sed -i 's/\[end\]//g' "$f"
     
-    # Remove property labels that don't exist in Gtk.Box but existed in Adw widgets
-    # We replace them with just the widget name to keep them as children
+    # Remove property labels surgically
     sed -i 's/content: //g' "$f"
     sed -i 's/child: //g' "$f"
     
     # Map title: to label: for downgraded Labels
-    sed -i '/Label/,/}/ s/title: _/label: _/' "$f"
+    sed -i 's/title: _/label: _/g' "$f"
     
-    # Remove modern properties
+    # Remove new properties
     sed -i '/top-bar-style:/d' "$f"
     sed -i '/centering-policy:/d' "$f"
     sed -i '/enable-transitions:/d' "$f"
@@ -66,21 +65,22 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i '/focus-widget:/d' "$f"
 done
 
-# Fix specific syntax error in game-view.blp caused by trailing semicolon on grid_bin
-# "Box grid_bin { ... };" -> "Box grid_bin { ... }"
+# Fix specific syntax errors caused by trailing semicolons on blocks that are now children
+# Box grid_bin { ... }; -> Box grid_bin { ... }
 sed -i '/Box grid_bin {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+# Adw.Clamp { ... }; -> Adw.Clamp { ... }
+sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 
 # Patch Vala code
-# Disable call to set_accent_color
-sed -i 's/set_accent_color ();/\/\/set_accent_color ();/g' "$PROJECT_DIR/src/window.vala" || true
-# Dummy the function body
-sed -i '/void set_accent_color ()/,/}/ s/{/{\n        return;/' "$PROJECT_DIR/src/window.vala" || true
+# 1. Disable set_accent_color logic safely
+sed -i '/void set_accent_color ()/,/}/c\    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
 
-# Fix inheritance in Vala to match downgraded blueprints
+# 2. Fix inheritance in Vala to match downgraded blueprints
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala" || true
 
-# C++ fixes
+# 3. C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 
