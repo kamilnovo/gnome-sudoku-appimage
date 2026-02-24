@@ -58,8 +58,9 @@ sed -i '/focus-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Patch Vala code for Libadwaita 1.5 compatibility
 # Adw.StyleManager.get_accent_color() and Adw.AccentColor are 1.6+
-# We use a robust way to comment out the body of the function
-sed -i '/void set_accent_color ()/,/}/ { /void set_accent_color ()/b; /}/b; s/^/\/\// }' "$PROJECT_DIR/src/window.vala" || true
+# We surgically replace the first line of the body with a return and comment the rest
+sed -i 's/var color = style_manager.get_accent_color ();/return; \/\/ patched/' "$PROJECT_DIR/src/window.vala" || true
+sed -i '/\/\/ patched/,/accent_provider.load_from_string(s);/ s/^/\/\//' "$PROJECT_DIR/src/window.vala" || true
 
 # 3. Build
 cd "$PROJECT_DIR"
