@@ -32,76 +32,82 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Patch blueprints for older Libadwaita
+# Patch blueprints surgically
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
-    echo "Patching $f..."
+    echo "Patching Blueprint: $f"
     
-    # Downgrade widgets
-    sed -i 's/Adw.ToolbarView/Box/g' "$f"
-    sed -i 's/Adw.WindowTitle/Label/g' "$f"
-    sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
+    # 1. ToolbarView -> Box
+    perl -0777 -pi -e 's/Adw.ToolbarView\s*\{/Gtk.Box { orientation: vertical; /g' "$f"
+    
+    # 2. Remove property labels and slot markers
+    perl -pi -e 's/\[(top|bottom|content|child)\]\s*//g' "$f"
+    perl -0777 -pi -e 's/\b(content|child|default-widget|focus-widget):\s*//g' "$f"
+    
+    # 3. WindowTitle -> Label (Map title: to label:, remove subtitle:)
+    perl -0777 -pi -e 's/Adw.WindowTitle\s+[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#\btitle:#label:#g; $c=~s#\bsubtitle:[^;]+;##g; "Gtk.Label {$c}"/ge' "$f"
+    
+    # 4. SwitchRow -> ActionRow + Switch suffix
+    perl -0777 -pi -e 's/Adw.SwitchRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/Adw.ActionRow { $2 suffix: Gtk.Switch $1 { valign: center; }; }/g' "$f"
+    
+    # 5. SpinRow -> ActionRow + SpinButton suffix
+    perl -0777 -pi -e 's/Adw.SpinRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/Adw.ActionRow { $2 suffix: Gtk.SpinButton $1 { valign: center; }; }/g' "$f"
+    
+    # 6. Dialog types
     sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
-    sed -i 's/Adw.SwitchRow/Adw.ActionRow/g' "$f"
-    sed -i 's/Adw.SpinRow/SpinButton/g' "$f" # Downgrade SpinRow directly to SpinButton for simpler Vala matching
-
-    # Surgical removal of content/child property wrappers
-    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};?/\2 {\3}/g' "$f"
-    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$_\-]+);/\2;/g' "$f"
-
-    # Map title: to label: for downgraded Labels
-    perl -0777 -pi -e 's/Label(?:\s+[a-zA-Z0-9_]+)?\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#\btitle:#label:#g; $c=~s#\bsub(?:title|label):[^;]+;##g; "Label {$c}"/ge' "$f"
-
-    # Remove incompatible blocks (Adjustment is fine for SpinButton)
+    sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
     
-    # Remove incompatible properties
+    # 7. Remove modern properties
     sed -i '/top-bar-style:/d' "$f"
     sed -i '/centering-policy:/d' "$f"
     sed -i '/enable-transitions:/d' "$f"
     sed -i '/content-width:/d' "$f"
     sed -i '/content-height:/d' "$f"
-    sed -i '/default-widget:/d' "$f"
-    sed -i '/focus-widget:/d' "$f"
-    
-    # Remove slot markers
-    sed -i 's/\[top\]//g' "$f"
-    sed -i 's/\[bottom\]//g' "$f"
 done
 
-# Patch Vala code
+# Patch Vala Code surgically
 echo "=== Patching Vala code ==-"
 
-# window.vala fixes
+# window.vala
+# - Disable visible-dialog notify
 sed -i 's/notify\["visible-dialog"\]/\/\/notify\["visible-dialog"\]/g' "$PROJECT_DIR/src/window.vala"
+# - Dummy out visible_dialog_cb body
 perl -0777 -pi -e 's/private void visible_dialog_cb \(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g' "$PROJECT_DIR/src/window.vala"
-sed -i 's/style_manager.get_accent_color ()/Adw.ColorScheme.PREFER_LIGHT/g' "$PROJECT_DIR/src/window.vala" # Dummy value
-sed -i 's/load_from_string/load_from_data/g' "$PROJECT_DIR/src/window.vala"
+# - Dummy out accent color logic (Added in 1.6)
+perl -0777 -pi -e 's/void set_accent_color \(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/void set_accent_color () { }/g' "$PROJECT_DIR/src/window.vala"
+sed -i 's/style_manager.notify\["accent-color"\]/\/\/style_manager.notify/g' "$PROJECT_DIR/src/window.vala"
+# - Fix load_from_string -> load_from_data
+sed -i 's/accent_provider.load_from_string(s);/accent_provider.load_from_data(s.data);/g' "$PROJECT_DIR/src/window.vala"
+# - Remove dispose_template
 sed -i 's/dispose_template (this.get_type ());/\/\/dispose_template/g' "$PROJECT_DIR/src/window.vala"
 
-# preferences-dialog.vala fixes
-sed -i 's/dispose_template (this.get_type ());/\/\/dispose_template/g' "$PROJECT_DIR/src/preferences-dialog.vala"
-sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala"
-sed -i 's/Adw.SwitchRow/Adw.ActionRow/g' "$PROJECT_DIR/src/preferences-dialog.vala"
+# gnome-sudoku.vala
+# - Replace Adw.AlertDialog with Adw.MessageDialog (Added in 1.2)
+# - Replace Adw.AboutDialog with Gtk.AboutDialog (Added in 1.5)
+# - Fix present(window)
+sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+perl -0777 -pi -e 's/var dialog = new Adw.AlertDialog \(([^,]+), ([^)]+)\);/var dialog = new Adw.MessageDialog (window, $1, $2);/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+perl -0777 -pi -e 's/var dialog = new Adw.AlertDialog \(([^)]+)\);/var dialog = new Adw.MessageDialog (window, $1, "");/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+sed -i 's/dialog.present (window);/dialog.present ();/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+sed -i 's/preferences_dialog.present (window);/preferences_dialog.set_transient_for(window); preferences_dialog.present ();/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+sed -i 's/print_dialog.present (window);/print_dialog.set_transient_for(window); print_dialog.present ();/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+# - AboutDialog replacement
+perl -0777 -pi -e 's/var about_dialog = new Adw.AboutDialog.from_appdata \("([^"]+)", VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+sed -i 's/about_dialog.present (window);/about_dialog.present ();/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
 
-# print-dialog.vala fixes
+# preferences-dialog.vala
+sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala"
+sed -i 's/Adw.SwitchRow/Gtk.Switch/g' "$PROJECT_DIR/src/preferences-dialog.vala"
+sed -i 's/dispose_template (this.get_type ());/\/\/dispose_template/g' "$PROJECT_DIR/src/preferences-dialog.vala"
+
+# print-dialog.vala
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala"
 sed -i 's/Adw.SpinRow/Gtk.SpinButton/g' "$PROJECT_DIR/src/print-dialog.vala"
 
-# printer.vala fixes
+# printer.vala
 sed -i 's/Pango.cairo_create_layout/Pango.Cairo.create_layout/g' "$PROJECT_DIR/src/printer.vala"
 sed -i 's/Pango.cairo_show_layout/Pango.Cairo.show_layout/g' "$PROJECT_DIR/src/printer.vala"
-perl -0777 -pi -e 's/var dialog = new Adw.AlertDialog \(([^,]+), ([^)]+)\);/var dialog = new Gtk.MessageDialog (window, Gtk.DialogFlags.MODAL, Gtk.MessageType.ERROR, Gtk.ButtonsType.CLOSE, "%s", $1);/g' "$PROJECT_DIR/src/printer.vala"
-sed -i 's/dialog.add_response/\/\/dialog.add_response/g' "$PROJECT_DIR/src/printer.vala"
-
-# gnome-sudoku.vala fixes
-sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-sed -i 's/\.present (window)/.present ()/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-# Replace Adw.AboutDialog with Gtk.AboutDialog
-sed -i 's/new Adw.AboutDialog.from_appdata/new Gtk.AboutDialog/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-# Replace Adw.AlertDialog with Gtk.MessageDialog (simplified)
-perl -0777 -pi -e 's/var dialog = new Adw.AlertDialog \(([^,]+), ([^)]+)\);/var dialog = new Gtk.MessageDialog (window, Gtk.DialogFlags.MODAL, Gtk.MessageType.INFO, Gtk.ButtonsType.OK, "%s", $1);/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-sed -i 's/dialog.add_response/\/\/dialog.add_response/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-sed -i 's/dialog.set_response_appearance/\/\/dialog.set_response_appearance/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-sed -i 's/dialog.response.connect/\/\/dialog.response.connect/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+perl -0777 -pi -e 's/var dialog = new Adw.AlertDialog \(([^,]+), ([^)]+)\);/var dialog = new Adw.MessageDialog (window, $1, $2);/g' "$PROJECT_DIR/src/printer.vala"
+sed -i 's/dialog.present (window);/dialog.present ();/g' "$PROJECT_DIR/src/printer.vala"
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -109,7 +115,6 @@ sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp
 
 # 4. Build Sudoku
 cd "$PROJECT_DIR"
-# Add pangocairo explicitly to meson if needed, but usually it comes with gtk4
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
