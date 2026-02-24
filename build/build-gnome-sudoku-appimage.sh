@@ -27,8 +27,9 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 2. Patch for Ubuntu 24.04 libraries (GLib 2.80, GTK 4.14, Adwaita 1.5)
-# Include <ctime> for time(nullptr) in qqwing-wrapper.cpp
-sed -i '/#include "qqwing-wrapper.h"/a #include <ctime>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
+# Fix C++ compatibility in qqwing-wrapper.cpp
+sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
+sed -i 's/srand(time(nullptr))/std::srand(std::time(nullptr))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 echo "=== Patched qqwing-wrapper.cpp ==="
 head -n 30 "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 
