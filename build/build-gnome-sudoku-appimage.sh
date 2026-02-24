@@ -36,40 +36,61 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     echo "Patching Blueprint: $f"
     
-    # 1. Widget Downgrades
-    sed -i 's/Adw.ToolbarView/Gtk.Box/g' "$f"
-    sed -i 's/Adw.WindowTitle/Gtk.Label/g' "$f"
-    sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
-    sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
-    
-    # 2. Property labels and slot markers (Surgically remove 'content:', 'child:', '[top]', etc.)
-    # Handle 'property: Widget {' and 'property: Widget;'
-    perl -0777 -pi -e 's/\b(content|child|default-widget|focus-widget):\s*//g' "$f"
-    perl -pi -e 's/\[(top|bottom|content|child)\]\s*//g' "$f"
-
-    # 3. Handle Adw.SpinRow and Adw.SwitchRow (Added in 1.4)
-    # Convert to ActionRow + suffix
-    perl -0777 -pi -e 's/Adw.SpinRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/Adw.ActionRow { $2 suffix: Gtk.SpinButton $1 { valign: center; }; }/g' "$f"
-    perl -0777 -pi -e 's/Adw.SwitchRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/Adw.ActionRow { $2 suffix: Gtk.Switch $1 { valign: center; }; }/g' "$f"
-
-    # 4. Correct Gtk.Label properties (title -> label, remove subtitle)
-    perl -0777 -pi -e 's/Gtk.Label\s*\{((?:[^{}]|\{(?1)\})*)\}/
-        my $c = $1;
-        $c =~ s#\btitle:#label:#g;
-        $c =~ s#\bsubtitle:[^;]+;##g;
-        "Gtk.Label {$c}"
+    # 1. StatusPage Fix (Specifically for start-view.blp)
+    # Convert Adw.StatusPage to a Box + Label + children
+    perl -0777 -pi -e 's/Adw.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
+        my $inner = $1;
+        my $title = "";
+        if ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) { $title = $1; }
+        $inner =~ s#child:##g;
+        "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"]; margin-bottom: 24; } $inner }"
     /gex' "$f"
 
-    # 5. Semicolon Purge: Semicolons after widget blocks are forbidden in Blueprint.
-    # Convert '};' to '}' globally.
-    sed -i 's/};/}/g' "$f"
+    # 2. SpinRow and SwitchRow -> ActionRow + suffix
+    perl -0777 -pi -e 's/Adw.SpinRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/
+        my ($id, $inner) = ($1, $2);
+        my $title = "";
+        if ($inner =~ s#\btitle:\s*([^;]+);##) { $title = $1; }
+        "Adw.ActionRow { title: $title; suffix: Gtk.SpinButton $id { valign: center; $inner }; }"
+    /gex' "$f"
+
+    perl -0777 -pi -e 's/Adw.SwitchRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/
+        my ($id, $inner) = ($1, $2);
+        my $title = "";
+        if ($inner =~ s#\btitle:\s*([^;]+);##) { $title = $1; }
+        "Adw.ActionRow { title: $title; suffix: Gtk.Switch $id { valign: center; $inner }; }"
+    /gex' "$f"
+
+    # 3. ToolbarView -> Box
+    perl -0777 -pi -e 's/Adw.ToolbarView\s*\{/Gtk.Box { orientation: vertical; /g' "$f"
     
-    # 6. Remove modern Adw/Gtk properties
+    # 4. Remove property labels and slot markers that interfere with Gtk.Box
+    # We must preserve the semicolons for properties we ARE NOT removing!
+    # Removing content: Widget { ... }; -> Widget { ... }
+    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g' "$f"
+    # Removing [top], [bottom], etc.
+    perl -pi -e 's/\[(top|bottom|content|child)\]\s*//g' "$f"
+    
+    # 5. WindowTitle -> Label (Map title: to label:, remove subtitle:)
+    perl -0777 -pi -e 's/Adw.WindowTitle(?:\s+[a-zA-Z0-9_]+)?\s*\{((?:[^{}]|\{(?1)\})*)\}/
+        my $inner = $1;
+        $inner =~ s#\btitle:#label:#g;
+        $inner =~ s#\bsubtitle:[^;]+;##g;
+        "Gtk.Label {$inner}"
+    /gex' "$f"
+    
+    # 6. Generic renames
+    sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
+    sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
+    
+    # 7. Remove modern properties
     sed -i '/top-bar-style:/d' "$f"
     sed -i '/centering-policy:/d' "$f"
     sed -i '/enable-transitions:/d' "$f"
     sed -i '/content-width:/d' "$f"
     sed -i '/content-height:/d' "$f"
+    sed -i '/default-widget:/d' "$f"
+    sed -i '/focus-widget:/d' "$f"
 done
 
 # Patch Vala Code surgically
