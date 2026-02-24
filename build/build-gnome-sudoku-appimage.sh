@@ -47,9 +47,11 @@ sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || tru
 sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Patch Vala code
-# 1. Disable set_accent_color
-sed -i 's/var color = style_manager.get_accent_color ();/return; \/\/ patched/' "$PROJECT_DIR/src/window.vala" || true
-sed -i '/\/\/ patched/,/accent_provider.load_from_string(s);/ s/^/\/\//' "$PROJECT_DIR/src/window.vala" || true
+# 1. Disable set_accent_color logic (needs Libadwaita 1.6+)
+# We replace the body content with just a return statement
+sed -i '/void set_accent_color ()/,/}/ s/var color = style_manager.get_accent_color ();/return;/' "$PROJECT_DIR/src/window.vala" || true
+# Comment out lines that might still cause semantic errors even after return
+sed -i 's/accent_provider.load_from_string(s);/\/\/patched/' "$PROJECT_DIR/src/window.vala" || true
 
 # 2. Fix Adw.Dialog vs Adw.Window in window.vala (the .blp template change needs Vala change)
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
