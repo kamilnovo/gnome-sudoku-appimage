@@ -19,7 +19,7 @@ cd blueprint-compiler
 meson setup build --prefix=/usr
 DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
 export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
+export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$REPO_ROOT/blueprint-dest/usr/local/lib/python3/dist-packages:$PYTHONPATH"
 cd "$REPO_ROOT"
 
 # 2. Fetch Sudoku source

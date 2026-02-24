@@ -60,6 +60,7 @@ jobs:
             libpcre2-dev \
             python3-dev \
             libdbus-1-dev \
+            python3-gi \
             mount
           pip3 install --break-system-packages --upgrade meson ninja
       - name: Build
