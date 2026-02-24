@@ -37,8 +37,8 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Protection Pass: Hide properties that require special syntax
-$content =~ s/\btitle-widget:\s*/__TITLE_WIDGET__/g;
+# 1. Protection Pass: Hide property-based assignments from semicolon stripping
+$content =~ s/(\btitle-widget:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?2)\})*)\})\s*;/$1__SEMICOLON__/g;
 
 # 2. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
@@ -84,14 +84,13 @@ $content =~ s/\[(top|bottom)\]\s*//g;
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
 # 9. FINAL SYNTAX NORMALIZATION
-# Remove semicolons ONLY after widget blocks that are children (not following property names)
-# We use a negative lookbehind to ensure we don't remove semicolons from property assignments.
-$content =~ s/(?<!:)\s*\}\s*;/}/g;
+# Remove ALL semicolons after closing braces, as child blocks never need them in Blueprint.
+$content =~ s/\}\s*;/}/g;
 # Specific fix for styles semicolon
 $content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
 
-# 10. Restore Protected properties
-$content =~ s/__TITLE_WIDGET__/title-widget: /g;
+# 10. Restore Protected semicolons
+$content =~ s/__SEMICOLON__/;/g;
 
 print $content;
 EOF
