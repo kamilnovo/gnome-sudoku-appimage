@@ -43,8 +43,18 @@ sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/start-view.blp" ||
 sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Adw.WindowTitle (1.4+) -> Label
+# Need to also change "title:" to "label:" inside these
 sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+# Surgical replacement of title: with label: only within the WindowTitle replacement area
+# For simplicity, we just replace title: with label: in the whole file since it's safe here
+sed -i '/Label windowtitle {/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/Label windowtitle {/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+
+# Remove "content:" property introduced by ToolbarView -> Box replacement
+sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Remove other new properties
 sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
