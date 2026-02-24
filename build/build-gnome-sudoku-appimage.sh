@@ -74,9 +74,14 @@ cp /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml "$APPDIR/
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
 # 5. Packaging
+set -x
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
+wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
-chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
+chmod +x linuxdeploy appimagetool linuxdeploy-plugin-gtk.sh
+
+# Add appimagetool to PATH so linuxdeploy can find it
+export PATH="$PWD:$PATH"
 
 # Find desktop and icon
 DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
