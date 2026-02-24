@@ -49,15 +49,17 @@ $content =~ s/Gtk.Box\s*\{(?! orientation: vertical;)/Gtk.Box { orientation: ver
 # Remove modern properties
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
 
-# Remove slot markers and property prefixes surgically
-$content =~ s/\[(top|bottom|content|child)\]\s*//g;
-$content =~ s/\b(content|child):\s*//g;
+# Remove slot markers
+$content =~ s/\[(top|bottom)\]//g;
+
+# Surgical removal of content/child property wrappers
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\}\s*;/\2 {\3}/g;
 
 # Fix Gtk.Label properties (title -> label, remove subtitle)
 $content =~ s/(Gtk.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     my ($head, $body) = ($1, $2);
-    $body =~ s#\btitle:\s*#label: #g;
-    $body =~ s#\bsub(?:title|label):[^;]+;##g;
+    $body =~ s#\btitle\s*:#label:#g;
+    $body =~ s#\bsubtitle\s*:[^;]+;##g;
     "$head$body}"
 /gex;
 
@@ -67,11 +69,8 @@ $content =~ s/Adw.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}
     my $title = ($body =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
     my $use_underline = ($body =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
     my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; } $body }"
+    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $body } }"
 /gex;
-
-# Global Semicolon Purge for blocks
-$content =~ s/\}\s*;/}/g;
 
 print $content;
 EOF
@@ -100,9 +99,9 @@ if ($file =~ /window.vala/) {
 if ($file =~ /gnome-sudoku.vala/) {
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
     $content =~ s/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
-    $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
-    $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
     $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
+    $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_program_name("Sudoku"); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
+    $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
 }
 
 if ($file =~ /preferences-dialog.vala/) {
@@ -120,14 +119,13 @@ if ($file =~ /printer.vala/) {
     $content =~ s/Pango.cairo_create_layout/Pango.Cairo.create_layout/g;
     $content =~ s/Pango.cairo_show_layout/Pango.Cairo.show_layout/g;
     $content =~ s/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
-    $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
 }
 
 print $content;
 EOF
 
 # Apply Vala patches
-for f in "$PROJECT_DIR"/src/*.vala; do
+find "$PROJECT_DIR"/src -name "*.vala" -print0 | while IFS= read -r -d $'\0' f; do
     echo "Patching Vala: $f"
     perl patch_vala.pl "$f" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
