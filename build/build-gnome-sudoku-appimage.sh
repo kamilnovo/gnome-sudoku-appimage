@@ -37,7 +37,7 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Handle Adw.StatusPage (Introduced in 1.4)
+# 1. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
     my $inner = $1;
     my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
@@ -46,23 +46,22 @@ $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
     "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"]; margin-bottom: 24; } $inner }"
 /gex;
 
-# 2. Handle Adw.SpinRow and Adw.SwitchRow (Introduced in 1.4)
+# 2. Handle Adw.SpinRow and Adw.SwitchRow -> Adw.ActionRow with [suffix]
 $content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
     my ($type, $id, $inner) = ($1, $2, $3);
-    my $action_row_props = "";
-    $action_row_props .= ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
-    $action_row_props .= ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
+    my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
+    my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
     my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-    "Adw.ActionRow { $action_row_props [suffix] $widget $id { valign: center; $inner } }"
+    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
 /gex;
 
-# 3. Downgrade basic widgets
+# 3. Downgrade other widgets
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 4. Fix Gtk.Box needs orientation
+# 4. Fix Gtk.Box orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
 # 5. Remove modern properties
@@ -72,17 +71,30 @@ $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width
 $content =~ s/\[(top|bottom)\]\s*//g;
 
 # 7. Surgical removal of content/child property wrappers
-#    Converts "property: Widget id { ... };" to "Widget id { ... }" (no semicolon)
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*)\s*\{((?:[^{}]|\{(?3)\})*)\}\s*;/ \2 {\3}/g;
-#    Converts "property: Widget;" to "Widget"
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;/ \2/g;
+#    Matches "content: Widget { ... };" and replaces with "Widget { ... }"
+#    This regex is recursive to handle nested widgets.
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\}\s*;/ \2 {\3}/g;
+#    Also handles simple assignments like "content: Widget;"
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;//g;
 
 # 8. Fix Gtk.Label properties (title -> label, remove subtitle)
 $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     my ($head, $body) = ($1, $2);
-    $body =~ s#\btitle\s*:#label:#g;
+    $body =~ s#\btitle\s*:#label: #g;
     $body =~ s#\bsub(?:title|label):\s*[^;]+;##g;
     "$head$body}"
+/gex;
+
+# 9. FINAL CLEANUP: ONLY remove semicolons after blocks if they are definitely NOT property values.
+#    Since we've already removed 'content:' and 'child:' along with their semicolons, 
+#    remaining '};' are likely from property assignments that NEED the semicolon (like title-widget).
+#    So we SHOULD NOT do a global removal.
+#    Instead, we'll just fix common cases where a block is a direct child but has a stray semicolon.
+#    In Gtk.Box, all top-level items are children.
+$content =~ s/(Gtk\.Box\s*\{)((?:[^{}]|\{(?1)\})*)\}/
+    my ($head, $body) = ($1, $2);
+    $body =~ s#\}\s*;#}#g; # Remove semicolons after blocks inside Gtk.Box
+    "Gtk.Box {$body}"
 /gex;
 
 print $content;
