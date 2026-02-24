@@ -37,11 +37,25 @@ echo "=== Verified patched meson.build ==-"
 grep -E "glib_version|gtk4|libadwaita-1" "$PROJECT_DIR/meson.build"
 
 # Patch blueprints for older Libadwaita
+# Adw.ToolbarView (1.4+) -> Gtk.Box + Adw.HeaderBar
+sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+
+# Adw.WindowTitle (1.4+) -> Label
+sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+
+# Remove other new properties
+sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/centering-policy: strict;/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/centering-policy: strict;/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+
+# Downgrade Dialogs
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
 sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
