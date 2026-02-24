@@ -43,13 +43,13 @@ jobs:
         run: |
           set -o pipefail
           bash build/build-gnome-sudoku-appimage.sh 2>&1 | tee build.log
-      - name: Show logs on failure
+      - name: Show errors on failure
         if: failure()
         run: |
-          echo "=== Build Log (last 200 lines) ==="
-          tail -n 200 build.log
-          echo "=== Meson Log ==="
-          find . -name "meson-log.txt" -exec cat {} +
+          echo "=== Critical Errors found in build.log ==="
+          grep -iE "error:|failed:|not found" build.log || true
+          echo "=== Last 100 lines of build.log ==="
+          tail -n 100 build.log
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:

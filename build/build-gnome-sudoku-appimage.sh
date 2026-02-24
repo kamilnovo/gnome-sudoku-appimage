@@ -29,9 +29,8 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 # 2. Patch for Ubuntu 24.04 libraries (GLib 2.80, GTK 4.14, Adwaita 1.5)
 # Fix C++ compatibility in qqwing-wrapper.cpp
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
-sed -i 's/srand(time(nullptr))/std::srand(std::time(nullptr))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
-echo "=== Patched qqwing-wrapper.cpp ==="
-head -n 30 "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
+# Replace any variation of srand/time with standard versions
+sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 
 # Sudoku 49.x might want GLib 2.82 or GTK 4.18, let's lower it.
 sed -i "s/glib_version = '2.82.0'/glib_version = '2.80.0'/g" "$PROJECT_DIR/meson.build" || true
@@ -41,11 +40,15 @@ sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.5'/g" "
 # Patch blueprint files for properties introduced in newer Libadwaita
 sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
 
-# Downgrade Adw.PreferencesDialog to Adw.PreferencesWindow (introduced in 1.5 vs 1.0)
-# Downgrade Adw.Dialog to Adw.Window (introduced in 1.5 vs 1.0)
-# Note: Ubuntu 24.04 has 1.5.0, but Sudoku 49.4 seems to use 1.6/1.7 features
+# Downgrade Adw.PreferencesDialog and Adw.Dialog to Adw.Window
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+
+# Adw.ToolbarView and Adw.WindowTitle properties
+# Adw.ToolbarView was introduced in 1.4, but some properties might be newer
+sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Remove properties that don't exist in Adw.Window but exist in Adw.Dialog
 sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
