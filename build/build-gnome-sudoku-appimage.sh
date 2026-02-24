@@ -73,8 +73,9 @@ sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/print-dialog.bl
 sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 
 # Patch Vala code
-# 1. Disable set_accent_color logic safely
-sed -i '/void set_accent_color ()/,/}/c\    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
+# 1. Disable set_accent_color logic safely by renaming the old one and providing an empty dummy
+sed -i 's/void set_accent_color ()/void set_accent_color_old ()/' "$PROJECT_DIR/src/window.vala" || true
+sed -i '/void set_accent_color_old ()/i \    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
 
 # 2. Fix inheritance in Vala to match downgraded blueprints
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
