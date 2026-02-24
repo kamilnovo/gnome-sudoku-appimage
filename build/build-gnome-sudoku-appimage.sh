@@ -33,37 +33,30 @@ sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_D
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
 # Patch blueprints for older Libadwaita
-# Massive simplification: replace complex Adw widgets with Gtk equivalents
-# and remove ALL property/slot labels that might cause issues.
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     echo "Patching $f..."
+    # Downgrade widgets
     sed -i 's/Adw.ToolbarView/Box/g' "$f"
     sed -i 's/Adw.Bin/Box/g' "$f"
     sed -i 's/Adw.WindowTitle/Label/g' "$f"
     sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
     sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
     
-    # Remove slot labels
+    # Remove slot labels [top], [bottom], etc.
     sed -i 's/\[top\]//g' "$f"
     sed -i 's/\[bottom\]//g' "$f"
     sed -i 's/\[start\]//g' "$f"
     sed -i 's/\[end\]//g' "$f"
     
-    # Remove property labels surgically
-    sed -i 's/content: /         /g' "$f"
-    sed -i 's/child: /       /g' "$f"
-    
-    # Remove ONLY semicolons that come after a closing brace
-    # which is the specific pattern that breaks Gtk widgets
-    sed -i 's/};/}/g' "$f"
+    # Remove property labels that don't exist in Gtk.Box but existed in Adw widgets
+    # We replace them with just the widget name to keep them as children
+    sed -i 's/content: //g' "$f"
+    sed -i 's/child: //g' "$f"
     
     # Map title: to label: for downgraded Labels
+    sed -i '/Label/,/}/ s/title: _/label: _/' "$f"
     
-    # Map title: to label: for downgraded Labels
-    # This is a bit rough but should work for Sudoku's simple blueprints
-    sed -i 's/title: _/label: _/g' "$f"
-    
-    # Remove new properties
+    # Remove modern properties
     sed -i '/top-bar-style:/d' "$f"
     sed -i '/centering-policy:/d' "$f"
     sed -i '/enable-transitions:/d' "$f"
@@ -73,8 +66,9 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i '/focus-widget:/d' "$f"
 done
 
-echo "=== Debug: Patched game-view.blp ==="
-cat "$PROJECT_DIR/src/blueprints/game-view.blp"
+# Fix specific syntax error in game-view.blp caused by trailing semicolon on grid_bin
+# "Box grid_bin { ... };" -> "Box grid_bin { ... }"
+sed -i '/Box grid_bin {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 
 # Patch Vala code
 # Disable call to set_accent_color
