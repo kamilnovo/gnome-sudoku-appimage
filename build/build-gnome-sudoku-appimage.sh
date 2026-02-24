@@ -41,7 +41,7 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i 's/Adw.WindowTitle/Label/g' "$f"
     sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
     sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
-    sed -i 's/Adw.SwitchRow/Gtk.CheckButton/g' "$f"
+    sed -i 's/Adw.SwitchRow/Adw.ActionRow/g' "$f"
     sed -i 's/Adw.SpinRow/Adw.ActionRow/g' "$f"
     
     # Remove slot labels that are incompatible with Box
@@ -70,10 +70,11 @@ done
 sed -i '/Box grid_bin {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 # Adw.Clamp { ... }; -> Adw.Clamp { ... }
 sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i '/Adw.Clamp {/,/};/ s/}/}/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 
 # Patch Vala code
 # 1. Disable set_accent_color logic safely by renaming the old one and providing an empty dummy
+sed -i 's/set_accent_color ();/\/\/set_accent_color ();/g' "$PROJECT_DIR/src/window.vala" || true
 sed -i 's/void set_accent_color ()/void set_accent_color_old ()/' "$PROJECT_DIR/src/window.vala" || true
 sed -i '/void set_accent_color_old ()/i \    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
 
