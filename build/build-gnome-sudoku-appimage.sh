@@ -9,65 +9,64 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-rm -rf "$APPDIR" "$PROJECT_DIR" deps-src deps-dest
-mkdir -p "$APPDIR" deps-dest
+rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
+mkdir -p "$APPDIR"
 
-# Helper for building deps from source on old systems
-build_dep() {
-    local name=$1 url=$2 version=$3
-    echo "=== Building $name $version ==-"
-    mkdir -p "deps-src/$name"
-    git clone --depth 1 --branch "$version" "$url" "deps-src/$name"
-    cd "deps-src/$name"
-    # GLib needs special options to avoid system conflict
-    if [ "$name" == "glib" ]; then
-        meson setup build --prefix=/usr --libdir=lib -Dtests=false
-    else
-        meson setup build --prefix=/usr --libdir=lib
-    fi
-    DESTDIR="$REPO_ROOT/deps-dest" meson install -C build
-    cd "$REPO_ROOT"
-}
-
-# 1. Build dependencies stack (needed because Debian 12 is too old)
-# Order: glib -> blueprint -> gtk -> adwaita
-export PKG_CONFIG_PATH="$REPO_ROOT/deps-dest/usr/lib/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig"
-export LD_LIBRARY_PATH="$REPO_ROOT/deps-dest/usr/lib:$LD_LIBRARY_PATH"
-export PATH="$REPO_ROOT/deps-dest/usr/bin:$PATH"
-
-build_dep "glib" "https://gitlab.gnome.org/GNOME/glib.git" "2.82.4"
-build_dep "blueprint-compiler" "https://gitlab.gnome.org/jwestman/blueprint-compiler.git" "v0.16.0"
-build_dep "gtk" "https://gitlab.gnome.org/GNOME/gtk.git" "4.16.7"
-build_dep "libadwaita" "https://gitlab.gnome.org/GNOME/libadwaita.git" "v1.6.3"
+# 1. Build blueprint-compiler (Debian 12 doesn't have it)
+echo "=== Building blueprint-compiler ==-"
+git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+cd blueprint-compiler
+meson setup build --prefix=/usr
+DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
+export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
+export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
+cd "$REPO_ROOT"
 
 # 2. Fetch Sudoku source
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
-# 3. Build Sudoku
+# 3. Patch for Debian 12 libraries (GTK 4.8, Libadwaita 1.2)
+# This is a massive downgrade, but it's the only way to avoid building the whole world
+echo "=== Patching Sudoku for Debian 12 ==-"
+sed -i "s/glib_version = '2.82.0'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
+sed -i "s/gtk4', version: '>= 4.18.0'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
+sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.2'/g" "$PROJECT_DIR/meson.build" || true
+
+# Patch blueprints for older Libadwaita
+sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
+sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i '/top-bar-style: raised;/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
+sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+
+# Patch Vala code
+# 1. Disable set_accent_color
+sed -i 's/var color = style_manager.get_accent_color ();/return; \/\/ patched/' "$PROJECT_DIR/src/window.vala" || true
+sed -i '/\/\/ patched/,/accent_provider.load_from_string(s);/ s/^/\/\//' "$PROJECT_DIR/src/window.vala" || true
+
+# 2. Fix Adw.Dialog vs Adw.Window in window.vala (the .blp template change needs Vala change)
+sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
+sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala" || true
+
+# 3. C++ fixes
+sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
+sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
+
+# 4. Build Sudoku
 cd "$PROJECT_DIR"
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 4. Bundle
-mkdir -p "$APPDIR/usr/lib"
-cp -a deps-dest/usr/lib/*.so* "$APPDIR/usr/lib/"
-
-# Handle GIO modules and schemas from our built deps
-mkdir -p "$APPDIR/usr/lib/gio/modules"
-cp -a deps-dest/usr/lib/gio/modules/*.so "$APPDIR/usr/lib/gio/modules/" 2>/dev/null || true
-
-mkdir -p "$APPDIR/usr/share/glib-2.0/schemas"
-cp -a deps-dest/usr/share/glib-2.0/schemas/*.xml "$APPDIR/usr/share/glib-2.0/schemas/" 2>/dev/null || true
-glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
-
 # 5. Packaging
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
-chmod +x linuxdeploy appimagetool linuxdeploy-plugin-gtk.sh
+chmod +x linuxdeploy appimagetool
 
 export PATH="$PWD:$PATH"
 export VERSION
@@ -80,10 +79,7 @@ ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | h
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
-    --plugin gtk \
     --output appimage
 
-# Final move to root
 mv *.AppImage "$REPO_ROOT/" 2>/dev/null || true
-
-echo "Done! Built on Debian 12 base."
+echo "Done!"
