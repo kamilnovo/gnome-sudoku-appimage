@@ -51,10 +51,10 @@ sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/start-view.blp" 
 sed -i '/Label windowtitle {/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
 sed -i '/Label windowtitle {/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
 
-# Remove "content:" property introduced by ToolbarView -> Box replacement
-sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+# Remove "content:" property label surgically (Adw.Bin grid_bin needs to be a child of Box)
+sed -i 's/content: \(.*\){/\1{/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
+sed -i 's/content: \(.*\){/\1{/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
+sed -i 's/content: \(.*\){/\1{/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Remove other new properties
 sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
