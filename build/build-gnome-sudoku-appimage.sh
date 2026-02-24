@@ -37,16 +37,25 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
+# 1. Strip modern property wrappers and slot markers
+$content =~ s/\b(content|child):\s*//g;
+$content =~ s/\[(top|bottom)\]\s*//g;
+
+# 2. Downgrade basic widgets (escape dots for safety)
+$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
+$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
+$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
+$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+
+# 3. StatusPage -> Box + Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
     my $inner = $1;
     my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
     $inner =~ s#\bvalign:\s*[^;]+;##g;
-    $inner =~ s#\bchild:##g;
-    "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"]; margin-bottom: 24; } $inner }"
+    "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }"
 /gex;
 
-# 2. Handle Adw.SpinRow and Adw.SwitchRow -> Adw.ActionRow with [suffix]
+# 4. SpinRow and SwitchRow -> ActionRow + suffix
 $content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
     my ($type, $id, $inner) = ($1, $2, $3);
     my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
@@ -55,29 +64,10 @@ $content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\
     "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
 /gex;
 
-# 3. Downgrade other widgets
-$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
-$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
-$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
-$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-
-# 4. Fix Gtk.Box orientation
+# 5. Fix Gtk.Box needs orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
-# 5. Remove modern properties
-$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
-
-# 6. Remove slot markers
-$content =~ s/\[(top|bottom)\]\s*//g;
-
-# 7. Surgical removal of content/child property wrappers
-#    Matches "content: Widget { ... };" and replaces with "Widget { ... }"
-#    This regex is recursive to handle nested widgets.
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\}\s*;/ \2 {\3}/g;
-#    Also handles simple assignments like "content: Widget;"
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;//g;
-
-# 8. Fix Gtk.Label properties (title -> label, remove subtitle)
+# 6. Correct Gtk.Label properties (title -> label, remove subtitle)
 $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     my ($head, $body) = ($1, $2);
     $body =~ s#\btitle\s*:#label: #g;
@@ -85,17 +75,14 @@ $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     "$head$body}"
 /gex;
 
-# 9. FINAL CLEANUP: ONLY remove semicolons after blocks if they are definitely NOT property values.
-#    Since we've already removed 'content:' and 'child:' along with their semicolons, 
-#    remaining '};' are likely from property assignments that NEED the semicolon (like title-widget).
-#    So we SHOULD NOT do a global removal.
-#    Instead, we'll just fix common cases where a block is a direct child but has a stray semicolon.
-#    In Gtk.Box, all top-level items are children.
-$content =~ s/(Gtk\.Box\s*\{)((?:[^{}]|\{(?1)\})*)\}/
-    my ($head, $body) = ($1, $2);
-    $body =~ s#\}\s*;#}#g; # Remove semicolons after blocks inside Gtk.Box
-    "Gtk.Box {$body}"
-/gex;
+# 7. Remove modern properties
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
+
+# 8. FINAL SYNTAX CLEANUP
+#    - Semicolons are forbidden after closing braces
+$content =~ s/\}\s*;/}/g;
+#    - Semicolons are forbidden after 'styles [...]'
+$content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
 
 print $content;
 EOF
