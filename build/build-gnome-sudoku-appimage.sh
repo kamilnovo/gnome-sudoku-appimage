@@ -37,9 +37,9 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Protection Pass: Hide property-based assignments from semicolon stripping
-# Matches "property: Widget { ... };" and protects the semicolon
-$content =~ s/(\b[a-z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?2)\})*)\})\s*;/$1__SEMICOLON__/g;
+# 1. Protection Pass: Hide semicolons of property-block assignments from stripping
+# This regex protects "property_name: WidgetType [id] { ... };"
+$content =~ s/([a-zA-Z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?2)\})*)\})\s*;/$1__SEMICOLON__/g;
 
 # 2. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
@@ -60,13 +60,13 @@ $content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\
     "Adw.ActionRow { $action_row_props [suffix] $widget $id { valign: center; $inner } }"
 /gex;
 
-# 4. Downgrade other widgets
+# 4. Downgrade other widgets (escape dots for safety)
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 5. Fix Gtk.Box needs orientation
+# 5. Fix Gtk.Box needs orientation (only add if not already present)
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
 # 6. Correct Gtk.Label properties (title -> label, remove subtitle)
@@ -77,7 +77,7 @@ $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     "$head$body}"
 /gex;
 
-# 7. Remove modern property wrappers (content:, child:)
+# 7. Remove modern property wrappers (content:, child:) and slot markers
 $content =~ s/\b(content|child):\s*//g;
 $content =~ s/\[(top|bottom)\]\s*//g;
 
@@ -85,9 +85,9 @@ $content =~ s/\[(top|bottom)\]\s*//g;
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
 # 9. FINAL SYNTAX NORMALIZATION
-# Remove ALL semicolons after closing braces, as child blocks never need them in Blueprint.
+# Remove all semicolons AFTER closing braces of widget blocks, IF NOT PROTECTED
 $content =~ s/\}\s*;/}/g;
-# Specific fix for styles semicolon
+# Specific fix for styles semicolon (styles keyword should not have a semicolon after its block)
 $content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
 
 # 10. Restore Protected semicolons
