@@ -33,59 +33,49 @@ sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_D
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
 # Patch blueprints for older Libadwaita
-# Adw.Bin (gone in 1.2) -> Box
-sed -i 's/Adw.Bin/Box/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/Adw.Bin/Box/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/Adw.Bin/Box/g' "$PROJECT_DIR/src/blueprints/menu-button.blp" || true
-
-# Adw.ToolbarView (1.4+) -> Box
-sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/Adw.ToolbarView/Box/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-
-# Adw.WindowTitle (1.4+) -> Label
-sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/Adw.WindowTitle/Label/g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-
-# Remove Slot labels [top], [bottom], etc. (only valid for specific widgets)
-sed -i 's/\[top\]//g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/\[top\]//g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/\[top\]//g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i 's/\[bottom\]//g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/\[bottom\]//g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/\[bottom\]//g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-
-# Property labels
-sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i 's/content: //g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i 's/child: //g' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-
-# Map title: to label: for Label widgets
-sed -i '/Label/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i '/Label/,/}/ s/title:/label:/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-
-# Remove other new properties
-sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i '/top-bar-style:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i '/centering-policy:/d' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-sed -i '/centering-policy:/d' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
-sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-
-# Downgrade Dialogs
-sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
-sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+# Massive simplification: replace complex Adw widgets with Gtk equivalents
+# and remove ALL property/slot labels that might cause issues.
+for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
+    echo "Patching $f..."
+    sed -i 's/Adw.ToolbarView/Box/g' "$f"
+    sed -i 's/Adw.Bin/Box/g' "$f"
+    sed -i 's/Adw.WindowTitle/Label/g' "$f"
+    sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
+    sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
+    
+    # Remove slot labels
+    sed -i 's/\[top\]//g' "$f"
+    sed -i 's/\[bottom\]//g' "$f"
+    sed -i 's/\[start\]//g' "$f"
+    sed -i 's/\[end\]//g' "$f"
+    
+    # Remove property labels and their trailing semicolons
+    sed -i 's/content: //g' "$f"
+    sed -i 's/child: //g' "$f"
+    # Remove problematic trailing semicolons after blocks
+    sed -i 's/};/}/g' "$f"
+    
+    # Map title: to label: for downgraded Labels
+    # This is a bit rough but should work for Sudoku's simple blueprints
+    sed -i 's/title: _/label: _/g' "$f"
+    
+    # Remove new properties
+    sed -i '/top-bar-style:/d' "$f"
+    sed -i '/centering-policy:/d' "$f"
+    sed -i '/enable-transitions:/d' "$f"
+    sed -i '/content-width:/d' "$f"
+    sed -i '/content-height:/d' "$f"
+    sed -i '/default-widget:/d' "$f"
+    sed -i '/focus-widget:/d' "$f"
+done
 
 # Patch Vala code
 # Disable call to set_accent_color
 sed -i 's/set_accent_color ();/\/\/set_accent_color ();/g' "$PROJECT_DIR/src/window.vala" || true
-# Dummy the function to avoid errors
-sed -i 's/var color = style_manager.get_accent_color ();/return;/' "$PROJECT_DIR/src/window.vala" || true
+# Dummy the function body
+sed -i '/void set_accent_color ()/,/}/ s/{/{\n        return;/' "$PROJECT_DIR/src/window.vala" || true
 
-# Fix Dialog inheritance in Vala
+# Fix inheritance in Vala to match downgraded blueprints
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala" || true
 
