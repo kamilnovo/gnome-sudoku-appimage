@@ -38,7 +38,8 @@ undef $/;
 my $content = <STDIN>;
 
 # 1. Protection Pass: Hide property-based assignments from semicolon stripping
-$content =~ s/(\btitle-widget:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?2)\})*)\})\s*;/$1__SEMICOLON__/g;
+# Matches "property: Widget { ... };" and protects the semicolon
+$content =~ s/(\b[a-z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?2)\})*)\})\s*;/$1__SEMICOLON__/g;
 
 # 2. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
@@ -65,7 +66,7 @@ $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 5. Fix Gtk.Box orientation
+# 5. Fix Gtk.Box needs orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
 # 6. Correct Gtk.Label properties (title -> label, remove subtitle)
