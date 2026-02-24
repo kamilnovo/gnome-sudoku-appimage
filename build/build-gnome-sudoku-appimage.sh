@@ -90,7 +90,14 @@ export VERSION
     --plugin gtk \
     --output appimage
 
+echo "=== Current Directory Content ==="
+ls -lh
+
 # Move AppImage to root for GitHub Actions artifact upload
-mv *.AppImage "$REPO_ROOT/" 2>/dev/null || true
+echo "Moving AppImage to $REPO_ROOT"
+find . -maxdepth 1 -name "*.AppImage" -exec mv {} "$REPO_ROOT/" \;
+
+echo "=== Root Directory Content ==="
+ls -lh "$REPO_ROOT"/*.AppImage || echo "No AppImage in root"
 
 echo "Done!"
