@@ -37,13 +37,7 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# --- FIRST PASS: PROTECT SEMICOLONS FOR PROPERTY-BLOCK ASSIGNMENTS ---
-# Protects "property_name: WidgetType [id] { ... };" by replacing the semicolon with a marker.
-# This covers popover:, title-widget:, content: for Adw.ApplicationWindow/Adw.Bin.
-$content =~ s/([a-zA-Z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?2)\})*)\})\s*;/$1__SEMICOLON__/g;
-
-
-# --- SECOND PASS: WIDGET AND PROPERTY TRANSFORMATIONS ---
+# --- FIRST PASS: WIDGET AND PROPERTY TRANSFORMATIONS (BEFORE SEMICOLON HANDLING) ---
 
 # 1. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
@@ -81,26 +75,34 @@ $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     "$head$body}"
 /gex;
 
-# 6. Remove modern property wrappers (content:, child:) from non-property contexts
-# This removes "content:" or "child:" only when they are NOT part of a protected property assignment.
+# 6. Remove modern property wrappers (content:, child:) from ALL contexts.
+# This assumes that if it remains as "Widget { ... }", it's a direct child.
 $content =~ s/\b(content|child):\s*//g;
-$content =~ s/\[(top|bottom)\]\s*//g; # Remove slot markers
 
 # 7. Remove modern properties
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
+# 8. Remove slot markers (e.g., [top], [end])
+$content =~ s/\[(top|bottom|start|end)\]\s*//g;
 
-# --- THIRD PASS: FINAL SYNTAX NORMALIZATION ---
 
-# 8. Remove ALL semicolons AFTER closing braces of widget blocks
-#    (as direct children never need them in Blueprint)
+# --- SECOND PASS: SEMICOLON NORMALIZATION ---
+
+# 9. Strip ALL semicolons after closing braces of widget blocks.
+#    This is the base state for direct children (no semicolons).
 $content =~ s/\}\s*;/}/g;
 
-# 9. Specific fix for styles semicolon (styles keyword should not have a semicolon after its block)
+# 10. Specific fix: Semicolons are forbidden after 'styles [...]' blocks.
 $content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
 
-# --- FOURTH PASS: RESTORE PROTECTED SEMICOLONS ---
-$content =~ s/__SEMICOLON__/;/g;
+# 11. ADD semicolons back to specific, known properties that REQUIRE them.
+#     These are properties whose values are widget blocks, and Blueprint demands a semicolon.
+#     This is a targeted re-insertion to satisfy the Blueprint compiler.
+#     Using a pattern that matches the whole line to ensure it's a top-level property assignment.
+#     Example: popover: PopoverMenu main_menu { ... }  --> popover: PopoverMenu main_menu { ... };
+#     Example: title-widget: Gtk.Label windowtitle { ... } --> title-widget: Gtk.Label windowtitle { ... };
+$content =~ s/^((\s*)(popover|title-widget):(\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?5)\})*)\}))\s*$/$1;/mg;
+
 
 print $content;
 EOF
