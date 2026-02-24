@@ -13,6 +13,9 @@ jobs:
       image: debian:bookworm
     permissions:
       contents: write
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
       - name: Install dependencies
@@ -32,8 +35,10 @@ jobs:
             libjson-glib-dev \
             libqqwing-dev \
             yelp-tools \
+            itstool \
             gettext \
             libxml2-utils \
+            libxml2-dev \
             desktop-file-utils \
             libgirepository1.0-dev \
             libglib2.0-dev \
