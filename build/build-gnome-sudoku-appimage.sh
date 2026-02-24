@@ -45,16 +45,17 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i 's/Adw.SpinRow/Adw.ActionRow/g' "$f"
 
     # Surgical removal of content/child property wrappers using Perl for nested-brace awareness
-    # This now accounts for optional IDs: Type ID { ... }
-    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g' "$f"
+    # Support both blocks and simple assignments, with optional trailing semicolon
+    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};?/\2 {\3}/g' "$f"
+    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$_\-]+);/\2;/g' "$f"
 
-    # Map title: to label: for downgraded Labels (account for IDs)
-    perl -0777 -pi -e 's/Label\s+[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#title:#label:#g; "Label {$c}"/ge' "$f"
-    # Also catch those without IDs
-    perl -0777 -pi -e 's/Label\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#title:#label:#g; "Label {$c}"/ge' "$f"
+    # Fix property names for downgraded Label (formerly Adw.WindowTitle)
+    # 1. Map title: to label:
+    # 2. Remove subtitle: or sublabel: which Gtk.Label doesn't have
+    perl -0777 -pi -e 's/Label(?:\s+[a-zA-Z0-9_]+)?\s*\{((?:[^{}]|\{(?1)\})*)\}/$c=$1; $c=~s#\btitle:#label:#g; $c=~s#\bsub(?:title|label):[^;]+;##g; "Label {$c}"/ge' "$f"
 
     # Remove incompatible blocks (Adjustment was child of SpinRow)
-    perl -0777 -pi -e 's/adjustment:\s*Adjustment\s*\{((?:[^{}]|\{(?1)\})*)\};//g' "$f"
+    perl -0777 -pi -e 's/adjustment:\s*Adjustment\s*\{((?:[^{}]|\{(?1)\})*)\};?//g' "$f"
     
     # Remove incompatible properties
     sed -i '/top-bar-style:/d' "$f"
