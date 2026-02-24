@@ -35,6 +35,18 @@ sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.5'/g" "
 # Patch blueprint files for properties introduced in newer Libadwaita
 sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
 
+# Downgrade Adw.PreferencesDialog to Adw.PreferencesWindow (introduced in 1.5 vs 1.0)
+# Downgrade Adw.Dialog to Adw.Window (introduced in 1.5 vs 1.0)
+# Note: Ubuntu 24.04 has 1.5.0, but Sudoku 49.4 seems to use 1.6/1.7 features
+sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
+sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+
+# Remove properties that don't exist in Adw.Window but exist in Adw.Dialog
+sed -i '/content-width:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/content-height:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+sed -i '/focus-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
+
 # 3. Build
 cd "$PROJECT_DIR"
 meson setup build --prefix=/usr -Dbuildtype=release
