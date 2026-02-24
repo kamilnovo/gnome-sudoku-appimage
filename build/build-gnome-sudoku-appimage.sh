@@ -57,8 +57,8 @@ sed -i '/default-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || tr
 sed -i '/focus-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 
 # Patch Vala code for Libadwaita 1.5 compatibility
-# Adw.StyleManager.get_accent_color() was introduced in 1.6
-sed -i 's/var color = style_manager.get_accent_color ();/var color = Adw.AccentColor.BLUE;/g' "$PROJECT_DIR/src/window.vala" || true
+# Adw.StyleManager.get_accent_color() and Adw.AccentColor are 1.6+
+sed -i '/void set_accent_color ()/,/}/c\    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
 
 # 3. Build
 cd "$PROJECT_DIR"
