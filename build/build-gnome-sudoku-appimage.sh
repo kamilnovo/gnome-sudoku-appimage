@@ -52,8 +52,11 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     # Remove property labels and their trailing semicolons
     sed -i 's/content: //g' "$f"
     sed -i 's/child: //g' "$f"
-    # Remove problematic trailing semicolons after blocks
+    # Even more aggressive semicolon removal
     sed -i 's/};/}/g' "$f"
+    sed -i 's/);/)/g' "$f"
+    # Remove any line that is just a semicolon or whitespace + semicolon
+    sed -i '/^[[:space:]]*;[[:space:]]*$/d' "$f"
     
     # Map title: to label: for downgraded Labels
     # This is a bit rough but should work for Sudoku's simple blueprints
