@@ -41,6 +41,10 @@ jobs:
           sudo pip3 install --upgrade meson
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
+      - name: Show ninja log on failure
+        if: failure()
+        run: |
+          find . -name "meson-log.txt" -exec cat {} +
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
