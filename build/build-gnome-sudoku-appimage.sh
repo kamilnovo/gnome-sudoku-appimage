@@ -32,101 +32,105 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Patch blueprints surgically
+# Standalone Blueprint Patcher
+cat << 'EOF' > patch_blp.pl
+undef $/;
+my $content = <STDIN>;
+# Downgrade basic widgets
+$content =~ s/\bAdw.ToolbarView\b/Gtk.Box/g;
+$content =~ s/\bAdw.StatusPage\b/Gtk.Box/g;
+$content =~ s/\bAdw.WindowTitle\b/Gtk.Label/g;
+$content =~ s/\bAdw.Dialog\b/Adw.Window/g;
+$content =~ s/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g;
+
+# Fix Gtk.Box needs orientation (only if not already vertical)
+$content =~ s/Gtk.Box\s*\{(?! orientation: vertical;)/Gtk.Box { orientation: vertical; /g;
+
+# Remove modern properties
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
+
+# Remove slot markers and property prefixes surgically
+$content =~ s/\[(top|bottom|content|child)\]\s*//g;
+$content =~ s/\b(content|child):\s*//g;
+
+# Fix Gtk.Label properties (title -> label, remove subtitle)
+$content =~ s/(Gtk.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
+    my ($head, $body) = ($1, $2);
+    $body =~ s#\btitle:\s*#label: #g;
+    $body =~ s#\bsub(?:title|label):[^;]+;##g;
+    "$head$body}"
+/gex;
+
+# Fix Adw.SpinRow and Adw.SwitchRow (Introduced in 1.4)
+$content =~ s/Adw.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/
+    my ($type, $id, $body) = ($1, $2, $3);
+    my $title = ($body =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
+    my $use_underline = ($body =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
+    my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; } $body }"
+/gex;
+
+# Global Semicolon Purge for blocks
+$content =~ s/\}\s*;/}/g;
+
+print $content;
+EOF
+
+# Apply Blueprint patches
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     echo "Patching Blueprint: $f"
-    
-    # 1. Handle Adw.StatusPage (child property not in 1.2)
-    # Convert to Box + Label
-    perl -0777 -pi -e 's/Adw.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
-        my $c = $1;
-        my $title = ($c =~ s#title:\s*(_\("[^"]+"\));##) ? $1 : "";
-        $c =~ s#child:##g;
-        "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"]; margin-bottom: 24; } $c }"
-    /gex' "$f"
-
-    # 2. Handle Adw.SpinRow and Adw.SwitchRow (Introduced in 1.4)
-    # Convert to Adw.ActionRow with [suffix]
-    perl -0777 -pi -e 's/Adw.SpinRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/
-        my ($id, $inner) = ($1, $2);
-        my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
-        my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
-        "Adw.ActionRow { $title $use_underline [suffix] Gtk.SpinButton $id { valign: center; $inner } }"
-    /gex' "$f"
-
-    perl -0777 -pi -e 's/Adw.SwitchRow\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/
-        my ($id, $inner) = ($1, $2);
-        my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
-        my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
-        "Adw.ActionRow { $title $use_underline [suffix] Gtk.Switch $id { valign: center; $inner } }"
-    /gex' "$f"
-
-    # 3. Adw.ToolbarView -> Gtk.Box
-    perl -0777 -pi -e 's/Adw.ToolbarView\s*\{((?:[^{}]|\{(?1)\})*)\}/
-        my $c = $1;
-        $c =~ s#\[top\]##g; $c =~ s#\[bottom\]##g;
-        "Gtk.Box { orientation: vertical; $c }"
-    /gex' "$f"
-
-    # 4. Adw.WindowTitle -> Gtk.Label (title -> label, remove subtitle)
-    perl -0777 -pi -e 's/Adw.WindowTitle(\s+[a-zA-Z0-9_]+)?\s*\{((?:[^{}]|\{(?2)\})*)\}/
-        my ($id, $inner) = ($1, $2);
-        $id ||= "";
-        $inner =~ s#\btitle:#label:#g;
-        $inner =~ s#\bsubtitle:[^;]+;##g;
-        "Gtk.Label$id {$inner}"
-    /gex' "$f"
-
-    # 5. Surgical removal of 'content:' and 'child:' prefixes AND their trailing semicolons
-    # This specifically fixes the "Expected ;" and "Unexpected tokens" errors.
-    perl -0777 -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g' "$f"
-    perl -pi -e 's/(content|child):\s*([a-zA-Z0-9\.\$_\-]+);/\2;/g' "$f"
-
-    # 6. Basic Renames
-    sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
-    sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
-    
-    # 7. Remove modern properties
-    sed -i '/top-bar-style:/d' "$f"
-    sed -i '/centering-policy:/d' "$f"
-    sed -i '/enable-transitions:/d' "$f"
-    sed -i '/content-width:/d' "$f"
-    sed -i '/content-height:/d' "$f"
-    sed -i '/default-widget:/d' "$f"
-    sed -i '/focus-widget:/d' "$f"
+    perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
 
-# Patch Vala Code surgically
-echo "=== Patching Vala code ==-"
+# Standalone Vala Patcher
+cat << 'EOF' > patch_vala.pl
+undef $/;
+my $content = <STDIN>;
+my $file = $ARGV[0];
 
-# window.vala
-sed -i 's/notify\["visible-dialog"\]/\/\/notify/g' "$PROJECT_DIR/src/window.vala"
-perl -0777 -pi -e 's/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g' "$PROJECT_DIR/src/window.vala"
-perl -0777 -pi -e 's/void\s+set_accent_color\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/void set_accent_color () { }/g' "$PROJECT_DIR/src/window.vala"
-sed -i 's/style_manager.notify\["accent-color"\]/\/\/style_manager.notify/g' "$PROJECT_DIR/src/window.vala"
-sed -i 's/accent_provider.load_from_string(s);/accent_provider.load_from_data(s.data);/g' "$PROJECT_DIR/src/window.vala"
-sed -i 's/dispose_template (this.get_type ());/\/\/dispose_template/g' "$PROJECT_DIR/src/window.vala"
+if ($file =~ /window.vala/) {
+    $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
+    $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
+    $content =~ s/void\s+set_accent_color\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/void set_accent_color () { }/g;
+    $content =~ s/style_manager.notify\s*\[\s*"accent-color"\s*\]/\/\/style_manager.notify/g;
+    $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
+    $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
+}
 
-# gnome-sudoku.vala
-sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-perl -0777 -pi -e 's/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-sed -i 's/\.present (window)/.present ()/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
-perl -0777 -pi -e 's/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g' "$PROJECT_DIR/src/gnome-sudoku.vala"
+if ($file =~ /gnome-sudoku.vala/) {
+    $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
+    $content =~ s/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
+    $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
+    $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
+    $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
+}
 
-# preferences-dialog.vala
-sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala"
-sed -i 's/unowned Adw.SwitchRow/unowned Gtk.Switch/g' "$PROJECT_DIR/src/preferences-dialog.vala"
-sed -i 's/dispose_template (this.get_type ());/\/\/dispose_template/g' "$PROJECT_DIR/src/preferences-dialog.vala"
+if ($file =~ /preferences-dialog.vala/) {
+    $content =~ s/Adw.PreferencesDialog/Adw.PreferencesWindow/g;
+    $content =~ s/unowned\s+Adw.SwitchRow/unowned Gtk.Switch/g;
+    $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
+}
 
-# print-dialog.vala
-sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala"
-sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' "$PROJECT_DIR/src/print-dialog.vala"
+if ($file =~ /print-dialog.vala/) {
+    $content =~ s/Adw.Dialog/Adw.Window/g;
+    $content =~ s/unowned\s+Adw.SpinRow/unowned Gtk.SpinButton/g;
+}
 
-# printer.vala
-sed -i 's/Pango.cairo_create_layout/Pango.Cairo.create_layout/g' "$PROJECT_DIR/src/printer.vala"
-sed -i 's/Pango.cairo_show_layout/Pango.Cairo.show_layout/g' "$PROJECT_DIR/src/printer.vala"
-perl -0777 -pi -e 's/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g' "$PROJECT_DIR/src/printer.vala"
-sed -i 's/dialog.present (window)/dialog.present ()/g' "$PROJECT_DIR/src/printer.vala"
+if ($file =~ /printer.vala/) {
+    $content =~ s/Pango.cairo_create_layout/Pango.Cairo.create_layout/g;
+    $content =~ s/Pango.cairo_show_layout/Pango.Cairo.show_layout/g;
+    $content =~ s/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
+    $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
+}
+
+print $content;
+EOF
+
+# Apply Vala patches
+for f in "$PROJECT_DIR"/src/*.vala; do
+    echo "Patching Vala: $f"
+    perl patch_vala.pl "$f" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
