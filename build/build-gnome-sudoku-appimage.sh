@@ -37,34 +37,35 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Strip modern property wrappers and slot markers
-$content =~ s/\b(content|child):\s*//g;
-$content =~ s/\[(top|bottom)\]\s*//g;
+# 1. Protection Pass: Hide properties that require special syntax
+$content =~ s/\btitle-widget:\s*/__TITLE_WIDGET__/g;
 
-# 2. Downgrade basic widgets (escape dots for safety)
+# 2. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
+$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
+    my $inner = $1;
+    my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
+    $inner =~ s#\bvalign:\s*[^;]+;##g;
+    $inner =~ s#\bchild:##g;
+    "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }"
+/gex;
+
+# 3. Handle Adw.SpinRow and Adw.SwitchRow -> Adw.ActionRow with [suffix]
+$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
+    my ($type, $id, $inner) = ($1, $2, $3);
+    my $action_row_props = "";
+    $action_row_props .= ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
+    $action_row_props .= ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
+    my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+    "Adw.ActionRow { $action_row_props [suffix] $widget $id { valign: center; $inner } }"
+/gex;
+
+# 4. Downgrade other widgets
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 3. StatusPage -> Box + Label
-$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
-    my $inner = $1;
-    my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
-    $inner =~ s#\bvalign:\s*[^;]+;##g;
-    "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }"
-/gex;
-
-# 4. SpinRow and SwitchRow -> ActionRow + suffix
-$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
-    my ($type, $id, $inner) = ($1, $2, $3);
-    my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
-    my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
-    my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
-/gex;
-
-# 5. Fix Gtk.Box needs orientation
+# 5. Fix Gtk.Box orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
 # 6. Correct Gtk.Label properties (title -> label, remove subtitle)
@@ -75,14 +76,22 @@ $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     "$head$body}"
 /gex;
 
-# 7. Remove modern properties
+# 7. Remove modern property wrappers (content:, child:)
+$content =~ s/\b(content|child):\s*//g;
+$content =~ s/\[(top|bottom)\]\s*//g;
+
+# 8. Remove modern properties
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# 8. FINAL SYNTAX CLEANUP
-#    - Semicolons are forbidden after closing braces
-$content =~ s/\}\s*;/}/g;
-#    - Semicolons are forbidden after 'styles [...]'
+# 9. FINAL SYNTAX NORMALIZATION
+# Remove semicolons ONLY after widget blocks that are children (not following property names)
+# We use a negative lookbehind to ensure we don't remove semicolons from property assignments.
+$content =~ s/(?<!:)\s*\}\s*;/}/g;
+# Specific fix for styles semicolon
 $content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
+
+# 10. Restore Protected properties
+$content =~ s/__TITLE_WIDGET__/title-widget: /g;
 
 print $content;
 EOF
