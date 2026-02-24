@@ -34,59 +34,55 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 
 # Standalone Blueprint Patcher
 cat << 'EOF' > patch_blp.pl
-undef $/; # Slurp the whole file
+undef $/;
 my $content = <STDIN>;
 
-# 1. Downgrade basic widgets (Adw. -> Gtk.)
-$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
-$content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
-$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
-$content =~ s/\bAdw\.Dialog\b/Adw.Window/g; # Adw.Window is 1.0+
-$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g; # Adw.PreferencesWindow is 1.0+
+# 1. Handle Adw.StatusPage (Adw 1.4+)
+$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
+    my $inner = $1;
+    my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
+    $inner =~ s#\bvalign:\s*[^;]+;##g; # Remove duplicate valign
+    $inner =~ s#\bchild:##g; # Remove child prefix
+    "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"]; margin-bottom: 24; } $inner }"
+/gex;
 
-# 2. Fix Gtk.Box needs orientation (only add if not already present)
+# 2. Handle Adw.SpinRow and Adw.SwitchRow (Adw 1.4+)
+$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
+    my ($type, $id, $inner) = ($1, $2, $3);
+    my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
+    my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
+    my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
+/gex;
+
+# 3. Downgrade basic widgets
+$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
+$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
+$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
+$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+
+# 4. Fix Gtk.Box needs orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
-# 3. Remove modern properties (these are known to not exist in 1.2/4.8)
-$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
+# 5. Remove modern properties
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
 
-# 4. Remove slot markers (only [top]/[bottom] as [prefix]/[suffix] are handled below)
-$content =~ s/\[(top|bottom)\]\s*//g;
+# 6. Remove slot markers and property prefixes surgically
+$content =~ s/\[(top|bottom|content|child)\]\s*//g;
+# This regex removes 'content:' or 'child:' only if it's followed by a Widget block and ensures the trailing semicolon is removed too.
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g;
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;//g;
 
-# 5. Surgical removal of content/child property wrappers
-#    Converts "property: Widget id { ... };" to "Widget id { ... }"
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*)\s*\{((?:[^{}]|\{(?3)\})*)\}\s*;/ \2 {\3}/g;
-#    Handles non-block ones too: "property: Widget;" to "Widget;"
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;/ \2;/g;
-
-
-# 6. Fix Gtk.Label properties (title -> label, remove subtitle/sublabel)
-#    Matches Gtk.Label followed by optional ID and its block.
+# 7. Fix Gtk.Label properties (title -> label, remove subtitle)
 $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     my ($head, $body) = ($1, $2);
-    $body =~ s#\btitle\s*:#label: #g;        # Rename 'title:' to 'label:'
-    $body =~ s#\bsub(?:title|label):\s*[^;]+;##g; # Remove 'subtitle:' or 'sublabel:'
+    $body =~ s#\btitle\s*:#label: #g;
+    $body =~ s#\bsub(?:title|label):\s*[^;]+;##g;
     "$head$body}"
 /gex;
 
-
-# 7. Handle Adw.SpinRow and Adw.SwitchRow (Introduced in 1.4)
-#    Convert to Adw.ActionRow with [suffix] and move properties.
-$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?2)\})*)\}/
-    my ($type, $id, $body) = ($1, $2, $3);
-    my $action_row_props = "";
-    # Extract properties that belong to Adw.ActionRow
-    $action_row_props .= ($body =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
-    $action_row_props .= ($body =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
-
-    my $widget_type = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-    "Adw.ActionRow { $action_row_props [suffix] $widget_type $id { valign: center; $body } }"
-/gex;
-
-
-# 8. Global Semicolon Purge for blocks - ONLY after closing braces
+# 8. Final syntax cleanup: No semicolons after widget blocks
 $content =~ s/\}\s*;/}/g;
-
 
 print $content;
 EOF
@@ -99,69 +95,42 @@ done
 
 # Standalone Vala Patcher
 cat << 'EOF' > patch_vala.pl
-undef $/; # Slurp the whole file
+undef $/;
 my $content = <STDIN>;
 my $file = $ARGV[0];
 
 if ($file =~ /window.vala/) {
-    # Visible dialog logic (Libadwaita 1.4+)
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
     $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
-    
-    # Accent color logic (Libadwaita 1.6+)
     $content =~ s/void\s+set_accent_color\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/void set_accent_color () { }/g;
     $content =~ s/style_manager.notify\s*\[\s*"accent-color"\s*\]/\/\/style_manager.notify/g;
-    
-    # Gtk.CssProvider.load_from_string (GTK 4.12+)
     $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
-    
-    # dispose_template (newer Vala/GTK feature)
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
 }
 
 if ($file =~ /gnome-sudoku.vala/) {
-    # GLib.ApplicationFlags.DEFAULT_FLAGS (newer GLib)
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
-    
-    # Adw.AlertDialog (Libadwaita 1.4+) -> Adw.MessageDialog (Libadwaita 1.2)
-    # Constructor mapping: Adw.AlertDialog(title, message) -> Adw.MessageDialog(window, heading, body)
-    $content =~ s/var\s+dialog\s*=\s*new\s+Adw\.AlertDialog\s*\(\s*([^,]+?)\s*,\s*([^)]*?)\s*\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
-    $content =~ s/var\s+dialog\s*=\s*new\s+Adw\.AlertDialog\s*\(\s*([^)]+?)\s*\);/var dialog = new Adw.MessageDialog(window, $1, "");/g;
-    
-    # Gtk.Window.present(window) (newer API for Adw.Dialog.present)
-    $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
-    
-    # Adw.AboutDialog (Libadwaita 1.5+) -> Gtk.AboutDialog
-    $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw\.AboutDialog\.from_appdata\s*\(\s*"([^"]+)"\s*,\s*VERSION\s*\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_program_name("Sudoku"); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
+    $content =~ s/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
+    $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_program_name("Sudoku"); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
     $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
+    $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
 }
 
 if ($file =~ /preferences-dialog.vala/) {
-    # Adw.PreferencesDialog (Libadwaita 1.4+) -> Adw.PreferencesWindow (Libadwaita 1.2)
-    $content =~ s/Adw\.PreferencesDialog/Adw.PreferencesWindow/g;
-    
-    # Adw.SwitchRow (Libadwaita 1.4+) -> Gtk.Switch (for type casting)
-    $content =~ s/unowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
-    
-    # dispose_template (newer Vala/GTK feature)
+    $content =~ s/Adw.PreferencesDialog/Adw.PreferencesWindow/g;
+    $content =~ s/unowned\s+Adw.SwitchRow/unowned Gtk.Switch/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
 }
 
 if ($file =~ /print-dialog.vala/) {
-    # Adw.Dialog (Libadwaita 1.5+) -> Adw.Window (Libadwaita 1.2)
-    $content =~ s/Adw\.Dialog/Adw.Window/g;
-    
-    # Adw.SpinRow (Libadwaita 1.4+) -> Gtk.SpinButton (for type casting)
-    $content =~ s/unowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
+    $content =~ s/Adw.Dialog/Adw.Window/g;
+    $content =~ s/unowned\s+Adw.SpinRow/unowned Gtk.SpinButton/g;
 }
 
 if ($file =~ /printer.vala/) {
-    # Pango.cairo_create_layout/show_layout (VAPI change)
-    $content =~ s/Pango\.cairo_create_layout/Pango.Cairo.create_layout/g;
-    $content =~ s/Pango\.cairo_show_layout/Pango.Cairo.show_layout/g;
-    
-    # Adw.AlertDialog (Libadwaita 1.4+) -> Adw.MessageDialog (Libadwaita 1.2)
-    $content =~ s/var\s+dialog\s*=\s*new\s+Adw\.AlertDialog\s*\(\s*([^,]+?)\s*,\s*([^)]*?)\s*\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
+    $content =~ s/Pango.cairo_create_layout/Pango.Cairo.create_layout/g;
+    $content =~ s/Pango.cairo_show_layout/Pango.Cairo.show_layout/g;
+    $content =~ s/var\s+dialog\s*=\s*new\s+Adw.AlertDialog\s*\(([^,]+),?\s*([^)]*)\);/var dialog = new Adw.MessageDialog(window, $1, $2);/g;
     $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
 }
 
