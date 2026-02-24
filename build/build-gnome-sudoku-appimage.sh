@@ -26,11 +26,14 @@ cd "$REPO_ROOT"
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
-# 2. Patch for Ubuntu 24.04 libraries (GLib 2.80, GTK 4.14)
+# 2. Patch for Ubuntu 24.04 libraries (GLib 2.80, GTK 4.14, Adwaita 1.5)
 # Sudoku 49.x might want GLib 2.82 or GTK 4.18, let's lower it.
 sed -i "s/glib_version = '2.82.0'/glib_version = '2.80.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= 4.18.0'/gtk4', version: '>= 4.14.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.5'/g" "$PROJECT_DIR/meson.build" || true
+
+# Patch blueprint files for properties introduced in newer Libadwaita
+sed -i '/enable-transitions: true;/d' "$PROJECT_DIR/src/blueprints/window.blp" || true
 
 # 3. Build
 cd "$PROJECT_DIR"
