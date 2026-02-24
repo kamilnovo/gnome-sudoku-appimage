@@ -53,7 +53,7 @@ sed -i '/focus-widget:/d' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
 # 3. Build
 cd "$PROJECT_DIR"
 meson setup build --prefix=/usr -Dbuildtype=release
-meson compile -C build
+meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
