@@ -90,4 +90,7 @@ export VERSION
     --plugin gtk \
     --output appimage
 
+# Move AppImage to root for GitHub Actions artifact upload
+mv *.AppImage "$REPO_ROOT/" 2>/dev/null || true
+
 echo "Done!"
