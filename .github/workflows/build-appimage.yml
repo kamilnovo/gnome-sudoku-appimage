@@ -40,10 +40,15 @@ jobs:
             libglib2.0-dev
           sudo pip3 install --upgrade meson
       - name: Build
-        run: bash build/build-gnome-sudoku-appimage.sh
-      - name: Show ninja log on failure
+        run: |
+          set -o pipefail
+          bash build/build-gnome-sudoku-appimage.sh 2>&1 | tee build.log
+      - name: Show logs on failure
         if: failure()
         run: |
+          echo "=== Build Log (last 200 lines) ==="
+          tail -n 200 build.log
+          echo "=== Meson Log ==="
           find . -name "meson-log.txt" -exec cat {} +
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
