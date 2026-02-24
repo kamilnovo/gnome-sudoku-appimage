@@ -49,10 +49,11 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i 's/\[start\]//g' "$f"
     sed -i 's/\[end\]//g' "$f"
     
-    # Remove property labels and their trailing semicolons
-    sed -i 's/content: //g' "$f"
-    sed -i 's/child: //g' "$f"
-    # Even more aggressive semicolon removal
+    # Remove property labels surgically
+    sed -i 's/content: /         /g' "$f"
+    sed -i 's/child: /       /g' "$f"
+    
+    # Remove trailing semicolons after blocks (}; -> })
     sed -i 's/};/}/g' "$f"
     sed -i 's/);/)/g' "$f"
     # Remove any line that is just a semicolon or whitespace + semicolon
