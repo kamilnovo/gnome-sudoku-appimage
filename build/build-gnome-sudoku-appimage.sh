@@ -47,6 +47,11 @@ mkdir -p "$APPDIR/usr/lib/x86_64-linux-gnu/gio/modules"
 cp /usr/lib/x86_64-linux-gnu/gio/modules/libdconfsettings.so "$APPDIR/usr/lib/x86_64-linux-gnu/gio/modules/" || true
 cp /usr/lib/x86_64-linux-gnu/gio/modules/libgiognutls.so "$APPDIR/usr/lib/x86_64-linux-gnu/gio/modules/" || true
 
+# Copy system schemas that Sudoku might depend on
+mkdir -p "$APPDIR/usr/share/glib-2.0/schemas"
+cp /usr/share/glib-2.0/schemas/org.gnome.settings-daemon.enums.xml "$APPDIR/usr/share/glib-2.0/schemas/" 2>/dev/null || true
+cp /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml "$APPDIR/usr/share/glib-2.0/schemas/" 2>/dev/null || true
+
 # Compile schemas
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
