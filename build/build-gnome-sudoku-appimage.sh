@@ -53,11 +53,11 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i 's/content: /         /g' "$f"
     sed -i 's/child: /       /g' "$f"
     
-    # Remove trailing semicolons after blocks (}; -> })
+    # Remove ONLY semicolons that come after a closing brace
+    # which is the specific pattern that breaks Gtk widgets
     sed -i 's/};/}/g' "$f"
-    sed -i 's/);/)/g' "$f"
-    # Remove any line that is just a semicolon or whitespace + semicolon
-    sed -i '/^[[:space:]]*;[[:space:]]*$/d' "$f"
+    
+    # Map title: to label: for downgraded Labels
     
     # Map title: to label: for downgraded Labels
     # This is a bit rough but should work for Sudoku's simple blueprints
@@ -72,6 +72,9 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     sed -i '/default-widget:/d' "$f"
     sed -i '/focus-widget:/d' "$f"
 done
+
+echo "=== Debug: Patched game-view.blp ==="
+cat "$PROJECT_DIR/src/blueprints/game-view.blp"
 
 # Patch Vala code
 # Disable call to set_accent_color
