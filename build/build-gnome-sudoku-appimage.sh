@@ -37,22 +37,23 @@ cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Handle Adw.StatusPage (Adw 1.4+)
+# 1. Handle Adw.StatusPage (Introduced in 1.4)
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
     my $inner = $1;
     my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
-    $inner =~ s#\bvalign:\s*[^;]+;##g; # Remove duplicate valign
-    $inner =~ s#\bchild:##g; # Remove child prefix
+    $inner =~ s#\bvalign:\s*[^;]+;##g;
+    $inner =~ s#\bchild:##g;
     "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"]; margin-bottom: 24; } $inner }"
 /gex;
 
-# 2. Handle Adw.SpinRow and Adw.SwitchRow (Adw 1.4+)
+# 2. Handle Adw.SpinRow and Adw.SwitchRow (Introduced in 1.4)
 $content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
     my ($type, $id, $inner) = ($1, $2, $3);
-    my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
-    my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
+    my $action_row_props = "";
+    $action_row_props .= ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
+    $action_row_props .= ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
     my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-    "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
+    "Adw.ActionRow { $action_row_props [suffix] $widget $id { valign: center; $inner } }"
 /gex;
 
 # 3. Downgrade basic widgets
@@ -65,24 +66,24 @@ $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
 # 5. Remove modern properties
-$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# 6. Remove slot markers and property prefixes surgically
-$content =~ s/\[(top|bottom|content|child)\]\s*//g;
-# This regex removes 'content:' or 'child:' only if it's followed by a Widget block and ensures the trailing semicolon is removed too.
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+(?:\s+[a-zA-Z0-9_]+)?)\s*\{((?:[^{}]|\{(?3)\})*)\};/\2 {\3}/g;
-$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;//g;
+# 6. Remove slot markers
+$content =~ s/\[(top|bottom)\]\s*//g;
 
-# 7. Fix Gtk.Label properties (title -> label, remove subtitle)
+# 7. Surgical removal of content/child property wrappers
+#    Converts "property: Widget id { ... };" to "Widget id { ... }" (no semicolon)
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*)\s*\{((?:[^{}]|\{(?3)\})*)\}\s*;/ \2 {\3}/g;
+#    Converts "property: Widget;" to "Widget"
+$content =~ s/\b(content|child):\s*([a-zA-Z0-9\.\$_\-]+)\s*;/ \2/g;
+
+# 8. Fix Gtk.Label properties (title -> label, remove subtitle)
 $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
     my ($head, $body) = ($1, $2);
-    $body =~ s#\btitle\s*:#label: #g;
+    $body =~ s#\btitle\s*:#label:#g;
     $body =~ s#\bsub(?:title|label):\s*[^;]+;##g;
     "$head$body}"
 /gex;
-
-# 8. Final syntax cleanup: No semicolons after widget blocks
-$content =~ s/\}\s*;/}/g;
 
 print $content;
 EOF
