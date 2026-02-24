@@ -28,61 +28,63 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Patch for Debian 12 libraries (GTK 4.8, Libadwaita 1.2)
 echo "=== Patching Sudoku for Debian 12 ==-"
+# Lower version requirements
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Patch blueprints for older Libadwaita
+# UI Patches
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
-    echo "Patching $f..."
-    # Downgrade widgets
+    echo "Patching UI: $f"
+    # Adw.ToolbarView (1.4) -> Box
     sed -i 's/Adw.ToolbarView/Box/g' "$f"
-    sed -i 's/Adw.Bin/Box/g' "$f"
+    sed -i 's/top-bar-style: [a-z]*;//g' "$f"
+    sed -i 's/content: //g' "$f"
+    
+    # Adw.WindowTitle (1.4) -> Label
+    # We remove the "title-widget:" property label so it becomes a regular child of HeaderBar
+    sed -i 's/title-widget: Adw.WindowTitle/Label/g' "$f"
     sed -i 's/Adw.WindowTitle/Label/g' "$f"
+    
+    # Adw.Dialog / Adw.PreferencesDialog (1.5) -> Window
     sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$f"
     sed -i 's/Adw.Dialog/Adw.Window/g' "$f"
-    sed -i 's/Adw.SwitchRow/Adw.ActionRow/g' "$f"
-    sed -i 's/Adw.SpinRow/Adw.ActionRow/g' "$f"
+    sed -i 's/content-width: [0-9]*;//g' "$f"
+    sed -i 's/content-height: [0-9]*;//g' "$f"
     
-    # Remove slot labels that are incompatible with Box
+    # Adw.SwitchRow (1.4) -> Gtk.CheckButton
+    sed -i 's/Adw.SwitchRow/CheckButton/g' "$f"
+    
+    # Adw.SpinRow / Adw.ComboRow (1.4) -> Adw.ActionRow
+    sed -i 's/Adw.SpinRow/Adw.ActionRow/g' "$f"
+    sed -i 's/Adw.ComboRow/Adw.ActionRow/g' "$f"
+    
+    # Common properties
+    sed -i 's/title: /label: /g' "$f"
     sed -i 's/\[top\]//g' "$f"
     sed -i 's/\[bottom\]//g' "$f"
+    sed -i 's/\[start\]//g' "$f"
+    sed -i 's/\[end\]//g' "$f"
+    sed -i 's/centering-policy: [a-z]*;//g' "$f"
+    sed -i 's/enable-transitions: [a-z]*;//g' "$f"
     
-    # Remove property labels surgically
-    sed -i 's/content: //g' "$f"
-    sed -i 's/child: //g' "$f"
-    
-    # Map title: to label: for downgraded Labels
-    sed -i 's/title: _/label: _/g' "$f"
-    
-    # Remove new properties
-    sed -i '/top-bar-style:/d' "$f"
-    sed -i '/centering-policy:/d' "$f"
-    sed -i '/enable-transitions:/d' "$f"
-    sed -i '/content-width:/d' "$f"
-    sed -i '/content-height:/d' "$f"
-    sed -i '/default-widget:/d' "$f"
-    sed -i '/focus-widget:/d' "$f"
+    # Cleanup trailing semicolons on block ends which were converted to children
+    sed -i 's/};/}/g' "$f"
 done
 
-# Fix specific syntax errors caused by trailing semicolons on blocks that are now children
-# Box grid_bin { ... }; -> Box grid_bin { ... }
-sed -i '/Box grid_bin {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/game-view.blp" || true
-# Adw.Clamp { ... }; -> Adw.Clamp { ... }
-sed -i '/Adw.Clamp {/,/};/ s/};/}/' "$PROJECT_DIR/src/blueprints/print-dialog.blp" || true
-sed -i '/Adw.Clamp {/,/};/ s/}/}/' "$PROJECT_DIR/src/blueprints/start-view.blp" || true
-
-# Patch Vala code
-# 1. Disable set_accent_color logic safely by renaming the old one and providing an empty dummy
+# Vala patches
+echo "=== Patching Vala code ==-"
+# Fix Window.vala (accent color and set_accent_color)
 sed -i 's/set_accent_color ();/\/\/set_accent_color ();/g' "$PROJECT_DIR/src/window.vala" || true
-sed -i 's/void set_accent_color ()/void set_accent_color_old ()/' "$PROJECT_DIR/src/window.vala" || true
-sed -i '/void set_accent_color_old ()/i \    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
+# Rename existing set_accent_color to avoid conflict and add empty dummy
+sed -i 's/void set_accent_color ()/void set_accent_color_unused ()/' "$PROJECT_DIR/src/window.vala" || true
+sed -i '/void set_accent_color_unused ()/i \    void set_accent_color () { }' "$PROJECT_DIR/src/window.vala" || true
 
-# 2. Fix inheritance in Vala to match downgraded blueprints
+# Fix inheritance in Vala
 sed -i 's/Adw.Dialog/Adw.Window/g' "$PROJECT_DIR/src/print-dialog.vala" || true
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/preferences-dialog.vala" || true
 
-# 3. C++ fixes
+# C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 
