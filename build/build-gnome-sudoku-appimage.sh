@@ -29,9 +29,12 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 # 3. Patch for Debian 12 libraries (GTK 4.8, Libadwaita 1.2)
 # This is a massive downgrade, but it's the only way to avoid building the whole world
 echo "=== Patching Sudoku for Debian 12 ==-"
-sed -i "s/glib_version = '2.82.0'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
-sed -i "s/gtk4', version: '>= 4.18.0'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
-sed -i "s/libadwaita-1', version: '>= 1.7'/libadwaita-1', version: '>= 1.2'/g" "$PROJECT_DIR/meson.build" || true
+sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
+sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
+sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
+
+echo "=== Verified patched meson.build ==-"
+grep -E "glib_version|gtk4|libadwaita-1" "$PROJECT_DIR/meson.build"
 
 # Patch blueprints for older Libadwaita
 sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' "$PROJECT_DIR/src/blueprints/preferences-dialog.blp" || true
