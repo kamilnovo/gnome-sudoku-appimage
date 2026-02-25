@@ -32,59 +32,60 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Standalone Blueprint Patcher (Ultra-robust version)
+# Standalone Blueprint Patcher (Recursive and robust)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Widget Downgrades (Simple renames)
+# 1. Widget Downgrades
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
 # 2. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
-$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{[^{}]*\})*)\}/
+$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|(?0))*)\}/
     my $inner = $1;
     my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
     $inner =~ s#\bvalign:\s*[^;]+;##g;
     "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }"
-/ges;
+/gesx;
 
-# 3. Handle Adw.SpinRow and Adw.SwitchRow -> Adw.ActionRow with [suffix]
-$content =~ s/Adw\.(Spin|Switch)Row(?:\s+([a-zA-Z0-9_]+))?\s*\{((?:[^{}]|\{[^{}]*\})*)\}/
-    my $type = $1;
-    my $id = $2 || "tmp_id";
-    my $inner = $3;
+# 3. Handle Adw.SpinRow and Adw.SwitchRow -> ActionRow + suffix
+$content =~ s/Adw\.(Spin|Switch)Row(?:\s+([a-zA-Z0-9_]+))?\s*\{((?:[^{}]|(?0))*)\}/
+    my ($type, $id, $inner) = ($1, $2 // "tmp_id", $3);
     my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
     my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
     my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
     "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
-/ges;
+/gesx;
 
 # 4. Strip modern property wrappers and slot markers
 $content =~ s/\b(content|child):\s*//g;
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
 
-# 5. Fix Gtk.Box needs orientation
+# 5. Fix Gtk.Box orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
 
-# 6. Correct Gtk.Label properties (title -> label, remove subtitle)
-$content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{[^{}]*\})*)\}/
+# 6. Fix Gtk.Label properties
+$content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|(?2))*)\}/
     my ($head, $body) = ($1, $2);
     $body =~ s#\btitle\s*:#label: #g;
     $body =~ s#\bsub(?:title|label):\s*[^;]+;##g;
     "$head$body}"
-/ges;
+/gesx;
 
-# 7. Remove modern properties
+# 7. Remove other modern properties
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# 8. Semicolon Normalization
-# First, protect all property assignments ending in };
-$content =~ s/(\b[a-z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{[^{}]*\})*)\})\s*;/$1__KEEP_SEMI__/gs;
-# Then remove all other };
+# 8. Semicolon Normalization Pass (Truly recursive protection)
+# We protect property assignments ending in };
+# The regex matches "prop: Type id { balanced_braces };"
+$content =~ s/(\b[a-z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*(\{(?:[^{}]++|(?2))*\})\s*;)/$1__KEEP_SEMI__/gs;
+
+# Remove all other block semicolons
 $content =~ s/\}\s*;/}/g;
+
 # Restore
 $content =~ s/__KEEP_SEMI__/;/g;
 
