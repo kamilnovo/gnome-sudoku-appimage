@@ -9,7 +9,7 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# Install file utility for linuxdeploy
+# Install missing system dependencies
 if [ "$EUID" -eq 0 ]; then
     apt-get update && apt-get install -y file
 else
@@ -72,7 +72,7 @@ if ($mode eq 'blp') {
     # 1. Transform Adw.SpinRow and Adw.SwitchRow
     foreach my $type (qw(Spin Switch)) {
         while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
-            my $start = $-[0]; my $id = $1 // "tmp_id"; my $brace = $+[0] - 1;
+            my $match_start = $-[0]; my $id = $1 // "tmp_id"; my $brace = $+[0] - 1;
             my $end = find_block_end($content, $brace);
             my $inner = substr($content, $brace + 1, $end - $brace - 2);
             my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
@@ -80,27 +80,32 @@ if ($mode eq 'blp') {
             $inner =~ s/\bvalign:\s*[^;]+;//g;
             my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
             my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
-            substr($content, $start, $end - $start) = $replacement;
-            pos($content) = $start + length($replacement);
+            substr($content, $match_start, $end - $match_start) = $replacement;
+            pos($content) = $match_start + length($replacement);
         }
     }
-    # 2. Transform Adw.StatusPage
+    # 2. Transform Adw.StatusPage (Careful with valign)
     while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
-        my $start = $-[0]; my $brace = $+[0] - 1;
+        my $match_start = $-[0]; my $brace = $+[0] - 1;
         my $end = find_block_end($content, $brace);
         my $inner = substr($content, $brace + 1, $end - $brace - 2);
         my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
+        # Strip internal valign to avoid duplicates
+        $inner =~ s/\bvalign:\s*[^;]+;//g;
         my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
-        substr($content, $start, $end - $start) = $replacement;
-        pos($content) = $start + length($replacement);
+        substr($content, $match_start, $end - $match_start) = $replacement;
+        pos($content) = $match_start + length($replacement);
     }
     # 3. Global downgrades
     $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
     $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    
-    # 4. Correct Gtk.Label properties
+    # 4. Strip modern attributes correctly
+    $content =~ s/^\s*(content|child|top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
+    $content =~ s/^\s*(content|child):\s*//mg;
+    $content =~ s/\[(top|bottom|start|end)\]\s*//g;
+    # 5. Fix Label properties
     while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
         my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
         my $inner = substr($content, $brace + 1, $end - $brace - 2);
@@ -109,20 +114,11 @@ if ($mode eq 'blp') {
         substr($content, $brace + 1, $end - $brace - 2) = $inner;
         pos($content) = $end;
     }
-    
-    # 5. Fix Gtk.Box needs orientation
-    $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
-
-    # 6. Strip modern properties
-    $content =~ s/\b(content|child):\s*//g;
-    $content =~ s/\[(top|bottom|start|end)\]\s*//g;
-    $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
-
-    # 7. Semicolon Normalization
+    # 6. Semicolon Normalization
     $content =~ s/\}\s*;/}/g;
     my @props = qw(adjustment popover title-widget menu-model model);
-    foreach my $prop (@props) {
-        while ($content =~ m/\b$prop:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+    foreach my $p (@props) {
+        while ($content =~ m/\b$p:\s*[^;\{]+\{/g) {
             my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
             substr($content, $end, 0) = ";";
             pos($content) = $end + 1;
