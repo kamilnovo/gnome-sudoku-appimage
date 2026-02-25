@@ -9,7 +9,7 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# Install missing system dependencies
+# Install file utility for linuxdeploy
 if [ "$EUID" -eq 0 ]; then
     apt-get update && apt-get install -y file
 else
@@ -50,8 +50,8 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Character-by-character parser for BLP and Vala
-cat << 'EOF' > patcher.pl
+# High-fidelity block matching logic
+cat << 'EOF' > patch_blocks.pl
 undef $/;
 my $content = <STDIN>;
 my $mode = $ARGV[0];
@@ -61,15 +61,14 @@ sub find_block_end {
     my $count = 1; my $pos = $brace_pos + 1;
     while ($count > 0 && $pos < length($str)) {
         my $c = substr($str, $pos, 1);
-        if ($c eq '{') { $count++; }
-        elsif ($c eq '}') { $count--; }
+        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
         $pos++;
     }
     return $pos;
 }
 
 if ($mode eq 'blp') {
-    # 1. Transform Adw.SpinRow and Adw.SwitchRow
+    # 1. Transform SpinRow and SwitchRow
     foreach my $type (qw(Spin Switch)) {
         while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/) {
             my $start = $-[0]; my $id = $1 // "tmp_id"; my $brace = $+[0] - 1;
@@ -92,20 +91,27 @@ if ($mode eq 'blp') {
         my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
         substr($content, $start, $end - $start) = $replacement;
     }
-    # 3. Global downgrades
+    # 3. Handle content: and child: blocks (Strip but keep the block)
+    while ($content =~ m/\b(content|child):\s*([a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/) {
+        my $start = $-[0]; my $brace = $+[0] - 1;
+        my $end = find_block_end($content, $brace);
+        my $len = $brace - $start;
+        my $prefix = substr($content, $start, $len);
+        $prefix =~ s/\b(content|child):\s*//;
+        substr($content, $start, $len) = $prefix;
+        # Update brace and end pos
+        $brace = $start + length($prefix);
+        $end = find_block_end($content, $brace);
+        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = ""; }
+    }
+    # 4. Global downgrades
     $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
     $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    # 4. Strip modern attributes correctly
+    # 5. Strip modern attributes correctly
     $content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
-    # 5. Handle content: and child: blocks
-    while ($content =~ m/\b(content|child):\s*(?:[a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/) {
-        my $match_start = $-[0]; my $brace = $+[0] - 1;
-        my $end = find_block_end($content, $brace);
-        substr($content, $match_start, ($brace - $match_start)) =~ s/(?:content|child):\s*//;
-        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = ""; }
-    }
+    $content =~ s/\[(top|bottom|start|end)\]\s*//g;
     # 6. Fix Label properties
     while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
         my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
@@ -157,8 +163,8 @@ if ($mode eq 'vala') {
 print $content;
 EOF
 
-for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patcher.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
-find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patcher.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blocks.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_blocks.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -192,6 +198,8 @@ LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
     ${LIBADWAITA:+ --library "$LIBADWAITA"} \
     ${LIBGTK:+ --library "$LIBGTK"} \
     ${LIBGEE:+ --library "$LIBGEE"} \
+    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
