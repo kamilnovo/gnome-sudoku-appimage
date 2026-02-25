@@ -31,6 +31,8 @@ echo "=== Patching Sudoku for Debian 12 ==-"
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
+# Add missing Pango dependencies for older Vala/Meson
+sed -i "s/dependency('qqwing'),/dependency('qqwing'), dependency('pango'), dependency('pangocairo'),/" "$PROJECT_DIR/meson.build"
 
 # Standalone Blueprint Patcher (Ultimate robustness)
 cat << 'EOF' > patch_blp.pl
@@ -136,9 +138,7 @@ undef $/;
 my $content = <STDIN>;
 my $file = $ARGV[0];
 
-# Global replacements
-$content =~ s/Pango\.Cairo\.create_layout/Pango.cairo_create_layout/g;
-$content =~ s/Pango\.Cairo\.show_layout/Pango.cairo_show_layout/g;
+# 1. Global API mapping
 $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
 
 if ($file =~ /window.vala/) {
@@ -152,7 +152,8 @@ if ($file =~ /window.vala/) {
 
 if ($file =~ /gnome-sudoku.vala/) {
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
-    $content =~ s/new\s+Adw.MessageDialog\s*\(([^,]+),\s*(.*)\);/new Adw.MessageDialog(window, $1, $2);/g;
+    # Fix MessageDialog constructor arguments
+    $content =~ s/new\s+Adw\.MessageDialog\s*\((.*)\)/new Adw.MessageDialog(window, $1)/g;
     $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_program_name("Sudoku"); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
     $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
     $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
@@ -170,7 +171,8 @@ if ($file =~ /print-dialog.vala/) {
 }
 
 if ($file =~ /printer.vala/) {
-    $content =~ s/new\s+Adw\.MessageDialog\s*\((.*)\);/new Adw.MessageDialog(null, $1);/g;
+    # Fix MessageDialog constructor arguments
+    $content =~ s/new\s+Adw\.MessageDialog\s*\((.*)\)/new Adw.MessageDialog(null, $1)/g;
     $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
 }
 
