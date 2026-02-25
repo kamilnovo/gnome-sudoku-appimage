@@ -46,11 +46,13 @@ sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = st
 # Patch CSS for GTK 4.8
 find "$PROJECT_DIR/data" -name "*.css" | while read css; do
     echo "Patching CSS: $css"
+    # Replace oklch/oklab with simple fallbacks
     sed -i 's/oklch([^)]*)/#3584e4/g' "$css"
     sed -i 's/oklab([^)]*)/#3584e4/g' "$css"
     sed -i 's/background: oklch(from [^;]*;//g' "$css"
     sed -i 's/color: oklab(from [^;]*;//g' "$css"
-    sed -i 's/:root/window/g' "$css"
+    # Remove :root
+    sed -i 's/:root//g' "$css"
 done
 
 # Standalone Blueprint Patcher
@@ -201,8 +203,9 @@ glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
 # 5. Packaging
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk
-chmod +x linuxdeploy linuxdeploy-plugin-gtk
+# Download the GTK plugin and name it correctly for linuxdeploy
+wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
+chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
 
 export PATH="$PWD:$PATH"
 export VERSION
@@ -212,6 +215,7 @@ DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
 ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
 # Run linuxdeploy with GTK plugin
+# We use the full name of the plugin script if needed, or rely on PATH.
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
