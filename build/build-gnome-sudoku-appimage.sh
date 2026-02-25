@@ -32,33 +32,24 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Standalone Blueprint Patcher (Simplified to avoid infinite recursion)
+# Standalone Blueprint Patcher (Harden to avoid recursion issues)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# 1. Widget Downgrades (Done first to simplify following regexes)
+# 1. Widget Downgrades
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 2. Fix Gtk.Box orientation
+# 2. Fix Gtk.Box needs orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
 
-# 3. Protection Pass: Hide property semicolons.
-# Matches "property: Widget { ... };" or "property: value;"
-# We use a simpler non-recursive match for the protection, then fix it later if needed.
-# This avoids the "infinite recursion" crash.
-$content =~ s/(\b[a-z0-9_-]+:\s*[^;\{]+;)/$1__PROTECT__/g;
-# Protect blocks assigned to properties: "property: Widget { ... };"
-# We match balance braces manually for the top level.
-while ($content =~ s/(\b[a-z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?:[^{}]|\{[^{}]*\})*\})*)\})\s*;/$1__SEMICOLON__/g) { }
-
-# 4. Handle Adw.SpinRow and Adw.SwitchRow (Introduced in 1.4)
-# These are now transformed to ActionRow with [suffix]
-$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|(?3))*)\}/
+# 3. Handle Adw.SpinRow and Adw.SwitchRow -> ActionRow + suffix
+# Use a simple non-recursive match for the block if it's not too deep
+$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{[^{}]*\})*)\}/
     my ($type, $id, $inner) = ($1, $2, $3);
     my $title = ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
     my $use_underline = ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
@@ -66,25 +57,31 @@ $content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|(?3))*)\}/
     "Adw.ActionRow { $title $use_underline [suffix] $widget $id { valign: center; $inner } }"
 /gesx;
 
-# 5. Fix Gtk.Label properties (title -> label, remove subtitle)
-$content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|(?2))*)\}/
+# 4. Fix Gtk.Label properties
+$content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{[^{}]*\})*)\}/
     my ($head, $body) = ($1, $2);
     $body =~ s#\btitle\s*:#label:#g;
     $body =~ s#\bsub(?:title|label):\s*[^;]+;##g;
     "$head$body}"
 /gesx;
 
-# 6. Strip modern property wrappers (content:, child:)
+# 5. Protection Pass: Protect all property assignments
+# We protect "property: value;" and "property: Widget { ... };"
+# This prevents the final cleanup from removing necessary semicolons.
+$content =~ s/(\b[a-zA-Z0-9_-]+:\s*[^;\{]+;)/$1__PROTECT__/g;
+$content =~ s/(\b[a-zA-Z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{[^{}]*\})*)\})\s*;/$1__SEMICOLON__/gs;
+
+# 6. Strip modern property wrappers
 $content =~ s/\b(content|child):\s*//g;
-$content =~ s/\[(top|bottom)\]\s*//g;
+$content =~ s/\[(top|bottom|start|end)\]\s*//g;
 
 # 7. Remove modern properties
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# 8. FINAL CLEANUP: Remove semicolons after blocks (direct children)
+# 8. FINAL CLEANUP: Remove semicolons after widget blocks (direct children)
 $content =~ s/\}\s*;/}/g;
 
-# 9. Restore Protected semicolons
+# 9. Restore Protected markers
 $content =~ s/__PROTECT__//g;
 $content =~ s/__SEMICOLON__/;/g;
 
