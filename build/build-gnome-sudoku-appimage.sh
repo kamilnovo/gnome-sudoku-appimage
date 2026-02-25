@@ -9,7 +9,7 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# Install file utility
+# Install dependencies
 if [ "$EUID" -eq 0 ]; then
     apt-get update && apt-get install -y file
 else
@@ -50,48 +50,45 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala: Surgical stubs and type replacements
-cat << 'EOF' > patch_vala.pl
+# Vala: Surgical replacements
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SwitchRow/unowned Gtk.Switch/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.ToolbarView/unowned Gtk.Box/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.StatusPage/unowned Gtk.Box/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
+
+# Vala: Method stubbing (Non-mutating search)
+cat << 'EOF' > stub_vala.pl
 undef $/;
 my $content = <STDIN>;
-sub find_block_end {
-    my ($str, $brace_pos) = @_;
-    my $count = 1; my $pos = $brace_pos + 1;
-    while ($count > 0 && $pos < length($str)) {
-        my $c = substr($str, $pos, 1);
-        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
-        $pos++;
-    }
-    return $pos;
-}
-$content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
-$content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
-$content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
-$content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
-$content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
-$content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
-$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
-$content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
-$content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
-$content =~ s/accent_provider\.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
-$content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
 my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
 foreach my $f (@funcs) {
-    while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/) {
+    # Find match and its block
+    while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
         my $start = $-[0]; my $brace = $+[0] - 1;
-        my $end = find_block_end($content, $brace);
+        my $count = 1; my $pos = $brace + 1;
+        while ($count > 0 && $pos < length($content)) {
+            my $c = substr($content, $pos, 1);
+            if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
+            $pos++;
+        }
+        my $end = $pos;
         my $replacement = "void $f () { }";
-        substr($content, $start, $end - $start) = $replacement;
+        # We replace in place but we must be careful with /g.
+        # Safer: just use a temporary marker and replace later or do it once.
+        substr($content, $start, $end - $start) = $replacement . (" " x ($end - $start - length($replacement)));
     }
 }
-$content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
-    my $args = $1; if ($args !~ m/,/) { $args .= ", null"; }
-    "new Adw.MessageDialog(null, $args);"
-}ge;
+# MessageDialog constructor mapping
+$content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
+$content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageDialog(null, $1, $2)/g;
 print $content;
 EOF
-find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_vala.pl "$f" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+find "$PROJECT_DIR" -name "*.vala" | while read f; do perl stub_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # Blueprint Fixes
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
@@ -99,31 +96,21 @@ find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTit
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/top-bar-style:/d' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/centering-policy:/d' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/\[(top|bottom|start|end)\]/d' {} +
-# Robust content/child prefix removal
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*content: //g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*child: //g' {} +
-# Semicolon fix: Remove them only after blocks that were children
-# We use Perl for this to be safer
-cat << 'EOF' > fix_blp_semi.pl
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*(content|child): //g' {} +
+
+# Semicolon Normalization (Safe approach)
+cat << 'EOF' > fix_blp.pl
 undef $/;
 my $content = <STDIN>;
-# Remove semicolons after blocks that don't look like they are properties
-# In Blueprints, properties usually have a ':' before the block on the same or prev line.
-# But we already removed 'content:' etc.
-# So if a block ends with '};', and it's not one of the few remaining property blocks, remove it.
-my @remain_props = qw(adjustment popover title-widget menu-model model);
-my $prop_regex = join("|", @remain_props);
+# 1. Remove all semicolons after blocks
 $content =~ s/\}\s*;/}/g;
-foreach my $p (@remain_props) {
-    $content =~ s/\b($p:\s*[^;\{]+\{)/$1/g; # Placeholder to keep track
-}
-# Actually, let's just restore them for known properties
+# 2. Identify property blocks and add semicolons back
+my @props = qw(adjustment popover title-widget menu-model model);
+my $prop_regex = join("|", @props);
+my @inserts;
 while ($content =~ m/\b($prop_regex):\s*[^;\{]+\{/g) {
     my $brace = $+[0] - 1;
     my $count = 1; my $pos = $brace + 1;
@@ -132,11 +119,15 @@ while ($content =~ m/\b($prop_regex):\s*[^;\{]+\{/g) {
         if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
         $pos++;
     }
+    push @inserts, $pos;
+}
+# Apply inserts in reverse to keep offsets valid
+foreach my $pos (reverse @inserts) {
     substr($content, $pos, 0) = ";";
 }
 print $content;
 EOF
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" | while read f; do perl fix_blp_semi.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" | while read f; do perl fix_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -160,14 +151,16 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force EVERYTHING to be bundled
-export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0,libgraphene-1.0,libgio-2.0,libgobject-2.0,libglib-2.0"
-
-DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
-ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
+# Force bundling of core libs
+LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
+LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
+LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
+    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
+    ${LIBGTK:+ --library "$LIBGTK"} \
+    ${LIBGEE:+ --library "$LIBGEE"} \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
