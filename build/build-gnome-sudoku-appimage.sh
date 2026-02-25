@@ -35,7 +35,7 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Patch Sudoku
 echo "=== Patching Sudoku ==-"
-# Force versions
+# Meson fixes
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
@@ -50,7 +50,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala: Surgical stubs and type replacements
+# Vala fixes
 cat << 'EOF' > patch_vala.pl
 undef $/;
 my $content = <STDIN>;
@@ -67,28 +67,51 @@ sub find_block_end {
     return $pos;
 }
 
-# Type mappings
 $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
 $content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
 $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
 $content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
 $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
-$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
-
-# Property fixes
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
-$content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
-$content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
 
-# Method stubs (Safe brace counting)
-my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
+if ($file =~ /window.vala/) {
+    $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
+    $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
+    $content =~ s/void\s+set_accent_color\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/void set_accent_color () { }/g;
+    $content =~ s/style_manager.notify\s*\[\s*"accent-color"\s*\]/\/\/style_manager.notify/g;
+    $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
+    $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
+}
+
+if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/ || $file =~ /game-view.vala/) {
+    $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
+    my $parent = ($file =~ /gnome-sudoku.vala/) ? "window" : "null";
+    $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
+        my $args = $1;
+        if ($args !~ m/,/) { $args .= ", null"; }
+        "new Adw.MessageDialog($parent, $args);"
+    }ge;
+    $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_program_name("Sudoku"); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
+    $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
+    $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
+}
+
+if ($file =~ /preferences-dialog.vala/) {
+    $content =~ s/Adw.PreferencesDialog/Adw.PreferencesWindow/g;
+    $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
+}
+
+if ($file =~ /print-dialog.vala/) {
+    $content =~ s/Adw.Dialog/Adw.Window/g;
+}
+
+# Stub troublesome animation methods
+my @funcs = qw(play_hide_animation skip_animation);
 foreach my $f (@funcs) {
-    while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
-        my $start = $-[0];
-        my $brace = $+[0];
+    while ($content =~ m/\bvoid\s+$f\s*\([^\)]*\)\s*\{/g) {
+        my $start = $-[0]; my $brace = $+[0];
         my $end = find_block_end($content, $brace);
         my $replacement = "void $f () { }";
         substr($content, $start, $end - $start) = $replacement;
@@ -96,18 +119,11 @@ foreach my $f (@funcs) {
     }
 }
 
-# MessageDialog parent injection
-$content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
-    my $args = $1;
-    if ($args !~ m/,/) { $args .= ", null"; }
-    "new Adw.MessageDialog(null, $args);"
-}ge;
-
 print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_vala.pl "$f" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint: Precision downgrades
+# Blueprint fixes
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -118,46 +134,53 @@ sub find_block_end {
     while ($count > 0 && $pos < length($str)) {
         my $c = substr($str, $pos, 1);
         if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
-        $pos++;
+        pos($str) = ++$pos;
     }
     return $pos;
 }
 
-# Transform StatusPage
+# 1. Transform StatusPage
 while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $start = $-[0]; my $brace = $+[0];
-    my $inner = substr($content, $brace, find_block_end($content, $brace) - $brace - 1);
+    my $end = find_block_end($content, $brace);
+    my $inner = substr($content, $brace, $end - $brace - 1);
     my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
     my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
-    substr($content, $start, length($inner) + ($brace - $start) + 1) = $replacement;
+    substr($content, $start, $end - $start) = $replacement;
     pos($content) = $start + length($replacement);
 }
 
-# Global type replacements
+# 2. Global Widget Downgrades
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# Strip properties
-$content =~ s/\b(content|child|top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
-$content =~ s/\[(top|bottom|start|end)\]\s*//g;
-
-# Fix Label properties in blocks
+# 3. Correct Gtk.Label properties
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
-    my $brace = $+[0];
-    my $end = find_block_end($content, $brace);
+    my $brace = $+[0]; my $end = find_block_end($content, $brace);
     my $inner = substr($content, $brace, $end - $brace - 1);
     $inner =~ s/\btitle\s*:\s*/label: /g;
-    $inner =~ s/\bsubtitle:\s*[^;]+;//g;
+    $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
     substr($content, $brace, $end - $brace - 1) = $inner;
     pos($content) = $end;
 }
 
-# Normalize semicolons
+# 4. Strip modern properties
+$content =~ s/\b(content|child):\s*//g;
+$content =~ s/\[(top|bottom|start|end)\]\s*//g;
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
+
+# 5. Fix semicolons
 $content =~ s/\}\s*;/}/g;
 my @props = qw(adjustment popover title-widget menu-model model);
-foreach my $p (@props) { $content =~ s/\b($p\s*:\s*[^;\{]+\{[^\}]+\})/$1;/g; }
+foreach my $p (@props) {
+    while ($content =~ m/\b$p:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+        my $brace = $+[0]; my $end = find_block_end($content, $brace);
+        substr($content, $end, 0) = ";";
+        pos($content) = $end + 1;
+    }
+}
 
 print $content;
 EOF
