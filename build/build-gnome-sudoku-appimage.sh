@@ -51,8 +51,8 @@ find "$PROJECT_DIR/data" -name "*.css" | while read css; do
     sed -i 's/oklab([^)]*)/#3584e4/g' "$css"
     sed -i 's/background: oklch(from [^;]*;//g' "$css"
     sed -i 's/color: oklab(from [^;]*;//g' "$css"
-    # Remove :root
-    sed -i 's/:root//g' "$css"
+    # Replace :root with *
+    sed -i 's/:root/*/g' "$css"
 done
 
 # Standalone Blueprint Patcher
