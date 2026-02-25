@@ -93,57 +93,50 @@ print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_vala.pl "$f" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint: Precision character-based rewriter
-cat << 'EOF' > patch_blp.pl
+# Blueprint Fixes
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/top-bar-style:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/centering-policy:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/\[(top|bottom|start|end)\]/d' {} +
+# Robust content/child prefix removal
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*content: //g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*child: //g' {} +
+# Semicolon fix: Remove them only after blocks that were children
+# We use Perl for this to be safer
+cat << 'EOF' > fix_blp_semi.pl
 undef $/;
 my $content = <STDIN>;
-sub find_block_end {
-    my ($str, $brace_pos) = @_;
-    my $count = 1; my $pos = $brace_pos + 1;
-    while ($count > 0 && $pos < length($str)) {
-        my $c = substr($str, $pos, 1);
+# Remove semicolons after blocks that don't look like they are properties
+# In Blueprints, properties usually have a ':' before the block on the same or prev line.
+# But we already removed 'content:' etc.
+# So if a block ends with '};', and it's not one of the few remaining property blocks, remove it.
+my @remain_props = qw(adjustment popover title-widget menu-model model);
+my $prop_regex = join("|", @remain_props);
+$content =~ s/\}\s*;/}/g;
+foreach my $p (@remain_props) {
+    $content =~ s/\b($p:\s*[^;\{]+\{)/$1/g; # Placeholder to keep track
+}
+# Actually, let's just restore them for known properties
+while ($content =~ m/\b($prop_regex):\s*[^;\{]+\{/g) {
+    my $brace = $+[0] - 1;
+    my $count = 1; my $pos = $brace + 1;
+    while ($count > 0 && $pos < length($content)) {
+        my $c = substr($content, $pos, 1);
         if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
         $pos++;
     }
-    return $pos;
-}
-# Global swaps
-$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
-$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
-$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
-$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-$content =~ s/\bAdw\.StatusPage\b/Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: " "; styles ["title-1"] } /g;
-# Strip modern props
-$content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
-$content =~ s/\[(top|bottom|start|end)\]//g;
-# Label properties
-$content =~ s/\btitle:\s*/label: /g;
-$content =~ s/\bsubtitle:\s*[^;]+;//g;
-# Property block fix: Replace "property: Identifier {" with "Identifier {" and remove the trailing ";"
-while ($content =~ m/\b(content|child):\s*/) {
-    my $start = $-[0]; my $len = $+[0] - $-[0];
-    substr($content, $start, $len) = "";
-    # Find next '{' and its matching '}'
-    if ($content =~ m/\{/g) {
-        my $brace = pos($content) - 1;
-        my $end = find_block_end($content, $brace);
-        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = ""; }
-    }
-    pos($content) = 0;
-}
-# Final semicolon cleanup: No ";" after "}" unless it's a known property
-$content =~ s/\}\s*;/}/g;
-my @props = qw(adjustment popover title-widget menu-model model);
-foreach my $p (@props) {
-    while ($content =~ m/\b$p:\s*[^;\{]+\{/g) {
-        my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
-        if (substr($content, $end, 1) ne ';') { substr($content, $end, 0) = ";"; }
-        pos($content) = $end + 1;
-    }
+    substr($content, $pos, 0) = ";";
 }
 print $content;
 EOF
-for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" | while read f; do perl fix_blp_semi.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -162,21 +155,21 @@ echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
 wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-chmod +x linuxdeploy linuxdeploy-plugin-gtk appimagetool
+chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force bundling of core libs
-LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
-LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
-LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
+# Force EVERYTHING to be bundled
+export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0,libgraphene-1.0,libgio-2.0,libgobject-2.0,libglib-2.0"
+
+DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
+ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
-    ${LIBGTK:+ --library "$LIBGTK"} \
-    ${LIBGEE:+ --library "$LIBGEE"} \
+    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
