@@ -9,16 +9,6 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# Install file utility
-if [ "$EUID" -eq 0 ]; then
-    apt-get update && apt-get install -y file
-else
-    sudo apt-get update && sudo apt-get install -y file
-fi
-
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
-mkdir -p "$APPDIR"
-
 # 1. Build blueprint-compiler
 echo "=== Building blueprint-compiler ==-"
 git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
@@ -50,7 +40,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala fixes
+# Vala fixes (Simple replacements)
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
@@ -62,7 +52,19 @@ find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/ \/* stub *\/ /g' {} +
 
-# Vala method stubs (Safe approach)
+# Blueprint fixes
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bsubtitle: /label: /g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget): [^;]*;//g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(content|child): //g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
+
+# Vala method stubbing (Reliable character-based approach)
 cat << 'EOF' > stub_vala.pl
 undef $/;
 my $content = <STDIN>;
@@ -91,25 +93,6 @@ print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl stub_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint Fixes
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bsubtitle: /label: /g' {} +
-
-# Semicolon and modern prop removal (Extended Regex)
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" | while read f; do
-    perl -i -pe 's/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g' "$f"
-    perl -i -pe 's/\b(content|child):\s*//g' "$f"
-    sed -i 's/\[(top|bottom|start|end)\]//g' "$f" || sed -i 's/\[top\]//g;s/\[bottom\]//g;s/\[start\]//g;s/\[end\]//g' "$f"
-    sed -i 's/}\s*;/}/g' "$f"
-done
-
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -132,18 +115,12 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force bundling of core libs
-LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
-LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
-LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
+
+# Force core libraries into AppImage
+export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0"
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
-    ${LIBGTK:+ --library "$LIBGTK"} \
-    ${LIBGEE:+ --library "$LIBGEE"} \
-    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
