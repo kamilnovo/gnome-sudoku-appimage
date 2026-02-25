@@ -62,11 +62,29 @@ find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/ \/* stub *\/ /g' {} +
 
-# Vala method stubs (Simple non-recursive Perl)
+# Vala method stubs (Safe approach)
 cat << 'EOF' > stub_vala.pl
 undef $/;
 my $content = <STDIN>;
-$content =~ s/\bvoid\s+(?:play_hide_animation|skip_animation|visible_dialog_cb|set_accent_color)\s*\([^\)]*\)\s*\{[^\}]*\}/void stub() { }/g;
+sub find_block_end {
+    my ($str, $brace_pos) = @_;
+    my $count = 1; my $pos = $brace_pos + 1;
+    while ($count > 0 && $pos < length($str)) {
+        my $c = substr($str, $pos, 1);
+        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
+        $pos++;
+    }
+    return $pos;
+}
+my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
+foreach my $f (@funcs) {
+    while ($content =~ m/\bvoid\s+$f\s*\([^\)]*\)\s*\{/g) {
+        my $start = $-[0]; my $brace = $+[0] - 1;
+        my $end = find_block_end($content, $brace);
+        my $replacement = "void $f () { }";
+        substr($content, $start, $end - $start) = $replacement . (" " x ($end - $start - length($replacement)));
+    }
+}
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageDialog(null, $1, $2)/g;
 print $content;
@@ -79,14 +97,18 @@ find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTit
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bsubtitle: /label: /g' {} +
-# Remove problematic properties without deleting the line
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget): [^;]*;//g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(content|child): //g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\[(top|bottom|start|end)\]//g' {} +
-# Semicolon fix: just remove them all after braces
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
+
+# Semicolon and modern prop removal (Extended Regex)
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" | while read f; do
+    perl -i -pe 's/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g' "$f"
+    perl -i -pe 's/\b(content|child):\s*//g' "$f"
+    sed -i 's/\[(top|bottom|start|end)\]//g' "$f" || sed -i 's/\[top\]//g;s/\[bottom\]//g;s/\[start\]//g;s/\[end\]//g' "$f"
+    sed -i 's/}\s*;/}/g' "$f"
+done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -110,14 +132,16 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force bundling of almost everything to avoid "standard" lib issues
-export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0,libgraphene-1.0,libgio-2.0,libgobject-2.0,libglib-2.0"
-
-DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
-ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
+# Force bundling of core libs
+LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
+LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
+LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
+    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
+    ${LIBGTK:+ --library "$LIBGTK"} \
+    ${LIBGEE:+ --library "$LIBGEE"} \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
