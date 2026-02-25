@@ -32,10 +32,9 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Add missing Pango dependencies
-sed -i "/gtk = dependency('gtk4'/i pango = dependency('pango')\npangocairo = dependency('pangocairo')" "$PROJECT_DIR/meson.build"
-sed -i "s/gnome_sudoku_dependencies = \[/gnome_sudoku_dependencies = [pango, pangocairo, /" "$PROJECT_DIR/src/meson.build"
-sed -i "s/libsudoku_dependencies = \[/libsudoku_dependencies = [pango, pangocairo, /" "$PROJECT_DIR/lib/meson.build"
+# Inject Pango/PangoCairo into Vala arguments
+sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
+sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
 # Standalone Blueprint Patcher (High-fidelity parser)
 cat << 'EOF' > patch_blp.pl
@@ -156,12 +155,12 @@ if ($file =~ /window.vala/) {
 if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/) {
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
     my $parent = ($file =~ /gnome-sudoku.vala/) ? "window" : "null";
-    # Match new Adw.MessageDialog ( ... ); and fix arguments
-    $content =~ s/new\s+Adw\.MessageDialog\s*\((.*)\);/
+    # Match new Adw.MessageDialog ( ... ); and fix arguments. Use curly braces for delimiter to avoid / confusion.
+    $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
         my $args = $1;
         if ($args !~ m/,/) { $args .= ", null"; }
         "new Adw.MessageDialog($parent, $args);"
-    /ge;
+    }ge;
     $content =~ s/var\s+about_dialog\s*=\s*new\s+Adw.AboutDialog.from_appdata\s*\(([^,]+),\s*VERSION\);/var about_dialog = new Gtk.AboutDialog(); about_dialog.set_program_name("Sudoku"); about_dialog.set_version(VERSION); about_dialog.set_transient_for(window);/g;
     $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
     $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
