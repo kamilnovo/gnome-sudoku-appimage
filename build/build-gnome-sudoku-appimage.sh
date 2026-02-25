@@ -35,7 +35,7 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Patch Sudoku
 echo "=== Patching Sudoku ==-"
-# Meson fixes
+# Force versions
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
@@ -73,6 +73,8 @@ $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
 $content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
 $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
+$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
 
@@ -134,7 +136,7 @@ sub find_block_end {
     while ($count > 0 && $pos < length($str)) {
         my $c = substr($str, $pos, 1);
         if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
-        pos($str) = ++$pos;
+        $pos++;
     }
     return $pos;
 }
@@ -147,31 +149,46 @@ while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
     my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
     substr($content, $start, $end - $start) = $replacement;
-    pos($content) = $start + length($replacement);
+    pos($content) = 0; # Reset pos to restart search from beginning
 }
 
-# 2. Global Widget Downgrades
+# 2. Transform SpinRow and SwitchRow
+foreach my $type (qw(Spin Switch)) {
+    while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
+        my $start = $-[0]; my $id = $1 // "tmp_id"; my $brace = $+[0];
+        my $end = find_block_end($content, $brace);
+        my $inner = substr($content, $brace, $end - $brace - 1);
+        my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
+        my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
+        $inner =~ s/\bvalign:\s*[^;]+;//g;
+        my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+        my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
+        substr($content, $start, $end - $start) = $replacement;
+        pos($content) = 0;
+    }
+}
+
+# 3. Global Widget Downgrades
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 3. Correct Gtk.Label properties
+# 4. Correct Gtk.Label properties
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace = $+[0]; my $end = find_block_end($content, $brace);
     my $inner = substr($content, $brace, $end - $brace - 1);
     $inner =~ s/\btitle\s*:\s*/label: /g;
-    $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
+    $inner =~ s/\bsubtitle:\s*[^;]+;//g;
     substr($content, $brace, $end - $brace - 1) = $inner;
     pos($content) = $end;
 }
 
-# 4. Strip modern properties
-$content =~ s/\b(content|child):\s*//g;
+# 5. Strip modern properties
+$content =~ s/\b(content|child|top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
-$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# 5. Fix semicolons
+# 6. Fix semicolons
 $content =~ s/\}\s*;/}/g;
 my @props = qw(adjustment popover title-widget menu-model model);
 foreach my $p (@props) {
@@ -203,7 +220,7 @@ echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
 wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
+chmod +x linuxdeploy linuxdeploy-plugin-gtk appimagetool
 
 export PATH="$PWD:$PATH"
 export VERSION
