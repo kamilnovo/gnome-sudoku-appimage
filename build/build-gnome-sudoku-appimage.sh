@@ -32,7 +32,7 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Standalone Blueprint Patcher (High-fidelity parser)
+# Standalone Blueprint Patcher (Surgical property migration)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -54,15 +54,16 @@ sub find_block {
 foreach my $type (qw(Spin Switch)) {
     while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
         my $match_start = $-[0];
-        my $id = $1 // "";
+        my $id = $1 // "tmp_id";
         my $brace_start = $+[0] - 1;
         my $block_end = find_block($content, $brace_start + 1);
         my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
         
         my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
         my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
-        my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+        $inner =~ s/\bvalign:\s*[^;]+;//g;
         
+        my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
         my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
         substr($content, $match_start, $block_end - $match_start) = $replacement;
         pos($content) = $match_start + length($replacement);
@@ -75,20 +76,22 @@ while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
     my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
-    my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? $1 : "\" \"";
+    
+    my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
+    $inner =~ s/\bvalign:\s*[^;]+;//g;
     
     my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
     substr($content, $match_start, $block_end - $match_start) = $replacement;
     pos($content) = $match_start + length($replacement);
 }
 
-# 3. Widget renames
+# 3. Global Widget Downgrades
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 4. Correct Gtk.Label properties (title -> label)
+# 4. Correct Gtk.Label properties
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
@@ -102,7 +105,7 @@ while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
 # 5. Fix Gtk.Box needs orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
 
-# 6. Strip modern property wrappers and slot markers
+# 6. Strip modern properties
 $content =~ s/\b(content|child):\s*//g;
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
