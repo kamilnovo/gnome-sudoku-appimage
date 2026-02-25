@@ -50,20 +50,18 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# High-fidelity block matching logic
-cat << 'EOF' > patch_blocks.pl
+# Character-by-character parser for BLP and Vala
+cat << 'EOF' > patcher.pl
 undef $/;
 my $content = <STDIN>;
 my $mode = $ARGV[0];
 
 sub find_block_end {
     my ($str, $brace_pos) = @_;
-    my $count = 1;
-    my $pos = $brace_pos + 1;
+    my $count = 1; my $pos = $brace_pos + 1;
     while ($count > 0 && $pos < length($str)) {
         my $c = substr($str, $pos, 1);
-        if ($c eq '{') { $count++; }
-        elsif ($c eq '}') { $count--; }
+        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
         $pos++;
     }
     return $pos;
@@ -91,11 +89,20 @@ if ($mode eq 'blp') {
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
     $content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
-    # Strip properties
-    $content =~ s/^\s*(content|child|top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
-    $content =~ s/^\s*(content|child):\s*//mg;
-    $content =~ s/\[(top|bottom|start|end)\]\s*//g;
-    # Label properties
+    # Strip modern properties correctly
+    $content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
+    # Special: Strip "content:" and "child:" but handle the block
+    while ($content =~ m/\b(content|child):\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+        my $match_start = $-[0]; my $brace = $+[0] - 1;
+        my $prop_name = $1;
+        my $end = find_block_end($content, $brace);
+        # Remove the "content:" prefix
+        substr($content, $match_start, ($brace - $match_start)) =~ s/$prop_name:\s*//;
+        # Remove the trailing semicolon of the block
+        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = ""; }
+        pos($content) = 0;
+    }
+    # Fix Label properties
     while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
         my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
         my $inner = substr($content, $brace + 1, $end - $brace - 2);
@@ -103,16 +110,6 @@ if ($mode eq 'blp') {
         $inner =~ s/\bsubtitle:\s*[^;]+;//g;
         substr($content, $brace + 1, $end - $brace - 2) = $inner;
         pos($content) = $end;
-    }
-    # Semicolon Normalization
-    $content =~ s/\}\s*;/}/g;
-    my @props = qw(adjustment popover title-widget menu-model model);
-    foreach my $p (@props) {
-        while ($content =~ m/\b$p:\s*[^;\{]+\{/g) {
-            my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
-            substr($content, $end, 0) = ";";
-            pos($content) = $end + 1;
-        }
     }
 }
 
@@ -138,10 +135,10 @@ if ($mode eq 'vala') {
             my $end = find_block_end($content, $brace);
             my $replacement = "void $f () { }";
             substr($content, $start, $end - $start) = $replacement;
-            pos($content) = $start + length($replacement);
+            pos($content) = 0;
         }
     }
-    # MessageDialog injection
+    # MessageDialog parent injection
     $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
         my $args = $1; if ($args !~ m/,/) { $args .= ", null"; }
         "new Adw.MessageDialog(null, $args);"
@@ -150,8 +147,8 @@ if ($mode eq 'vala') {
 print $content;
 EOF
 
-for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blocks.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
-find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_blocks.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patcher.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patcher.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -175,14 +172,16 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force bundling of EVERYTHING to avoid "standard" lib issues
-export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0,libgraphene-1.0,libgio-2.0,libgobject-2.0,libglib-2.0"
-
-DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
-ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
+# Force bundling of core libs
+LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
+LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
+LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
+    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
+    ${LIBGTK:+ --library "$LIBGTK"} \
+    ${LIBGEE:+ --library "$LIBGEE"} \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
