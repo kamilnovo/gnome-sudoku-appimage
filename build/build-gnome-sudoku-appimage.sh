@@ -50,7 +50,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala precision patcher
+# Vala: Precision stubs and type replacements
 cat << 'EOF' > patch_vala.pl
 undef $/;
 my $content = <STDIN>;
@@ -89,7 +89,7 @@ print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint precision patcher
+# Blueprint precision patcher (Safe version)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -114,22 +114,31 @@ $content =~ s/\bAdw\.SwitchRow\b/Adw.ActionRow/g;
 # Strip modern props
 $content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
 $content =~ s/\[(top|bottom|start|end)\]//g;
-# Process property blocks
+
+# 1. Identify property blocks and their transformations
+my @removals;
+my @inserts;
 while ($content =~ m/\b(content|child|title-widget|menu-model|model|adjustment|popover):\s*([a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/g) {
-    my $match_start = $-[0]; my $brace_end = $+[0];
+    my $start = $-[0]; my $brace_end = $+[0];
     my $prop_name = $1;
     my $end = find_block_end($content, $brace_end);
     if ($prop_name eq 'content' || $prop_name eq 'child') {
-        # Remove "content: " prefix and trailing ";"
-        substr($content, $match_start, $brace_end - $match_start) =~ s/$prop_name:\s*//;
-        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = " "; }
+        push @removals, [$start, $brace_end - $start, qr/(content|child):\s*/];
+        if (substr($content, $end, 1) eq ';') { push @removals, [$end, 1, qr/;/]; }
     } else {
-        # Ensure semicolon for property blocks
-        if (substr($content, $end, 1) ne ';') { substr($content, $end, 0) = ";"; }
+        if (substr($content, $end, 1) ne ';') { push @inserts, [$end, ";"]; }
     }
-    pos($content) = 0;
 }
-# Fix Label properties (ONLY in Gtk.Label blocks)
+# Apply changes in reverse to preserve offsets
+foreach my $change (sort { $b->[0] <=> $a->[0] } (@removals, @inserts)) {
+    if (scalar(@$change) == 3) { # Removal
+        substr($content, $change->[0], $change->[1]) =~ s/$change->[2]//;
+    } else { # Insert
+        substr($content, $change->[0], 0) = $change->[1];
+    }
+}
+
+# 2. Fix Label properties (ONLY in Gtk.Label blocks)
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace_end = $+[0]; my $end = find_block_end($content, $brace_end);
     my $inner = substr($content, $brace_end, $end - $brace_end - 1);
@@ -137,7 +146,7 @@ while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     $inner =~ s/\bsubtitle:\s*[^;]+;//g;
     substr($content, $brace_end, $end - $brace_end - 1) = $inner;
 }
-# Global semicolon cleanup for orphan semicolons
+# 3. Final global semicolon cleanup
 $content =~ s/\}\s*;\s*\}/\}\}/g;
 print $content;
 EOF
@@ -160,7 +169,7 @@ echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
 wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
+chmod +x linuxdeploy linuxdeploy-plugin-gtk appimagetool
 
 export PATH="$PWD:$PATH"
 export VERSION
@@ -175,6 +184,8 @@ LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
     ${LIBADWAITA:+ --library "$LIBADWAITA"} \
     ${LIBGTK:+ --library "$LIBGTK"} \
     ${LIBGEE:+ --library "$LIBGEE"} \
+    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
