@@ -36,7 +36,7 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
-# Standalone Blueprint Patcher (High-fidelity parser)
+# Standalone Blueprint Patcher (Proven high-fidelity)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -147,6 +147,12 @@ $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
 $content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
 $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
+
+# 2. Fix property usage for downgraded widgets
+# Stub out .subtitle on windowtitle (now Gtk.Label)
+$content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
+# Fix .title -> .label on windowtitle (now Gtk.Label)
+$content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
 
 if ($file =~ /window.vala/) {
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
