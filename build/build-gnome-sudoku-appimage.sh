@@ -134,14 +134,19 @@ for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
 
-# Standalone Vala Patcher (Hardened API mapping)
+# Standalone Vala Patcher (Ultimate type alignment)
 cat << 'EOF' > patch_vala.pl
 undef $/;
 my $content = <STDIN>;
 my $file = $ARGV[0];
 
-# Global replacements
+# 1. Global API and type mapping
 $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
+$content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
+$content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
+$content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
+$content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
+$content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
 
 if ($file =~ /window.vala/) {
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
@@ -152,10 +157,10 @@ if ($file =~ /window.vala/) {
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
 }
 
-if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/) {
+if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/ || $file =~ /game-view.vala/) {
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
     my $parent = ($file =~ /gnome-sudoku.vala/) ? "window" : "null";
-    # Match new Adw.MessageDialog ( ... ); and fix arguments. Use curly braces for delimiter to avoid / confusion.
+    # Match new Adw.MessageDialog ( ... ); and fix arguments.
     $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
         my $args = $1;
         if ($args !~ m/,/) { $args .= ", null"; }
@@ -168,13 +173,11 @@ if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/) {
 
 if ($file =~ /preferences-dialog.vala/) {
     $content =~ s/Adw.PreferencesDialog/Adw.PreferencesWindow/g;
-    $content =~ s/unowned\s+Adw.SwitchRow/unowned Gtk.Switch/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
 }
 
 if ($file =~ /print-dialog.vala/) {
     $content =~ s/Adw.Dialog/Adw.Window/g;
-    $content =~ s/unowned\s+Adw.SpinRow/unowned Gtk.SpinButton/g;
 }
 
 print $content;
