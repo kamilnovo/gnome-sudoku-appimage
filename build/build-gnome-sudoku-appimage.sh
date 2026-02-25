@@ -61,16 +61,17 @@ sub find_block_end {
     my $count = 1; my $pos = $brace_pos + 1;
     while ($count > 0 && $pos < length($str)) {
         my $c = substr($str, $pos, 1);
-        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
+        if ($c eq '{') { $count++; }
+        elsif ($c eq '}') { $count--; }
         $pos++;
     }
     return $pos;
 }
 
 if ($mode eq 'blp') {
-    # Transform Adw.SpinRow and Adw.SwitchRow
+    # 1. Transform Adw.SpinRow and Adw.SwitchRow
     foreach my $type (qw(Spin Switch)) {
-        while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
+        while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/) {
             my $start = $-[0]; my $id = $1 // "tmp_id"; my $brace = $+[0] - 1;
             my $end = find_block_end($content, $brace);
             my $inner = substr($content, $brace + 1, $end - $brace - 2);
@@ -80,29 +81,32 @@ if ($mode eq 'blp') {
             my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
             my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
             substr($content, $start, $end - $start) = $replacement;
-            pos($content) = 0;
         }
     }
-    # Global downgrades
+    # 2. StatusPage transformation
+    while ($content =~ m/\bAdw\.StatusPage\s*\{/) {
+        my $start = $-[0]; my $brace = $+[0] - 1;
+        my $end = find_block_end($content, $brace);
+        my $inner = substr($content, $brace + 1, $end - $brace - 2);
+        my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
+        my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
+        substr($content, $start, $end - $start) = $replacement;
+    }
+    # 3. Global downgrades
     $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
     $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    $content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
-    # Strip modern properties correctly
+    # 4. Strip modern attributes correctly
     $content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
-    # Special: Strip "content:" and "child:" but handle the block
-    while ($content =~ m/\b(content|child):\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+    # 5. Handle content: and child: blocks
+    while ($content =~ m/\b(content|child):\s*(?:[a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/) {
         my $match_start = $-[0]; my $brace = $+[0] - 1;
-        my $prop_name = $1;
         my $end = find_block_end($content, $brace);
-        # Remove the "content:" prefix
-        substr($content, $match_start, ($brace - $match_start)) =~ s/$prop_name:\s*//;
-        # Remove the trailing semicolon of the block
+        substr($content, $match_start, ($brace - $match_start)) =~ s/(?:content|child):\s*//;
         if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = ""; }
-        pos($content) = 0;
     }
-    # Fix Label properties
+    # 6. Fix Label properties
     while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
         my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
         my $inner = substr($content, $brace + 1, $end - $brace - 2);
@@ -111,10 +115,19 @@ if ($mode eq 'blp') {
         substr($content, $brace + 1, $end - $brace - 2) = $inner;
         pos($content) = $end;
     }
+    # 7. Semicolon Normalization
+    $content =~ s/\}\s*;/}/g;
+    my @props = qw(adjustment popover title-widget menu-model model);
+    foreach my $p (@props) {
+        while ($content =~ m/\b$p:\s*[^;\{]+\{/g) {
+            my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
+            substr($content, $end, 0) = ";";
+            pos($content) = $end + 1;
+        }
+    }
 }
 
 if ($mode eq 'vala') {
-    # Type mapping
     $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
     $content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
     $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
@@ -127,18 +140,15 @@ if ($mode eq 'vala') {
     $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
     $content =~ s/accent_provider\.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
-    # Stub animation methods
     my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
     foreach my $f (@funcs) {
-        while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
+        while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/) {
             my $start = $-[0]; my $brace = $+[0] - 1;
             my $end = find_block_end($content, $brace);
             my $replacement = "void $f () { }";
             substr($content, $start, $end - $start) = $replacement;
-            pos($content) = 0;
         }
     }
-    # MessageDialog parent injection
     $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
         my $args = $1; if ($args !~ m/,/) { $args .= ", null"; }
         "new Adw.MessageDialog(null, $args);"
@@ -182,8 +192,6 @@ LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
     ${LIBADWAITA:+ --library "$LIBADWAITA"} \
     ${LIBGTK:+ --library "$LIBGTK"} \
     ${LIBGEE:+ --library "$LIBGEE"} \
-    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
