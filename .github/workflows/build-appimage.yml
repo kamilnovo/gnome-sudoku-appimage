@@ -88,6 +88,8 @@ jobs:
           tag_name: ${{ github.ref_name == 'main' && 'latest' || github.ref_name }}
           files: "*.AppImage"
           generate_release_notes: true
-          make_latest: true
+          draft: true
+          prerelease: ${{ github.ref_name == 'main' }}
+          make_latest: ${{ github.ref_name != 'main' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
