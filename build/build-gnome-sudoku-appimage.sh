@@ -9,6 +9,16 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
+# Install file utility
+if [ "$EUID" -eq 0 ]; then
+    apt-get update && apt-get install -y file
+else
+    sudo apt-get update && sudo apt-get install -y file
+fi
+
+rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
+mkdir -p "$APPDIR"
+
 # 1. Build blueprint-compiler
 echo "=== Building blueprint-compiler ==-"
 git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
@@ -40,7 +50,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala fixes
+# Vala fixes (Reliable sed)
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
@@ -49,36 +59,89 @@ find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.ToolbarView/unown
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.StatusPage/unowned Gtk.Box/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/windowtitle.title = /windowtitle.label = /g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/ \/* stub *\/ /g' {} +
 
+# Vala Method Stubbing (Safe brace matching)
 cat << 'EOF' > stub_vala.pl
 undef $/;
 my $content = <STDIN>;
-$content =~ s/\bvoid\s+(?:play_hide_animation|skip_animation|visible_dialog_cb|set_accent_color)\s*\([^\)]*\)\s*\{[^\}]*\}/void stub() { }/g;
+sub find_block_end {
+    my ($str, $pos) = @_;
+    my $count = 1;
+    while ($count > 0 && $pos < length($str)) {
+        my $c = substr($str, $pos, 1);
+        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
+        $pos++;
+    }
+    return $pos;
+}
+my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
+foreach my $f (@funcs) {
+    while ($content =~ m/\bvoid\s+$f\s*\([^\)]*\)\s*\{/g) {
+        my $start = $-[0]; my $brace = $+[0] - 1;
+        my $end = find_block_end($content, $brace + 1);
+        substr($content, $start, $end - $start) = "void stub_$f() { }" . (" " x ($end - $start - 18));
+    }
+}
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageDialog(null, $1, $2)/g;
 print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl stub_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint Fixes
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
-# Remove problematic attributes
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/top-bar-style:/d' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/centering-policy:/d' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/enable-transitions:/d' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/\[top\]/d;/\[bottom\]/d;/\[start\]/d;/\[end\]/d' {} +
-# Fix content/child property assignments: just remove the prefix and hope the trailing ; is handled or ignore it
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*content: //g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*child: //g' {} +
-# Semicolon hack: remove them only if they are on a line by themselves with a brace
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
+# Blueprint Fixes (Context-aware rewriter)
+cat << 'EOF' > patch_blp.pl
+undef $/;
+my $content = <STDIN>;
+sub find_block_end {
+    my ($str, $pos) = @_;
+    my $count = 1;
+    while ($count > 0 && $pos < length($str)) {
+        my $c = substr($str, $pos, 1);
+        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
+        $pos++;
+    }
+    return $pos;
+}
+# Type downgrades
+$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
+$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
+$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
+$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+$content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
+$content =~ s/\bAdw\.SpinRow\b/Adw.ActionRow/g;
+$content =~ s/\bAdw\.SwitchRow\b/Adw.ActionRow/g;
+# Property strips
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
+$content =~ s/\[(top|bottom|start|end)\]//g;
+# Handle content: and child: (transform to direct children)
+while ($content =~ m/\b(content|child):\s*/) {
+    my $start = $-[0]; my $len = $+[0] - $-[0];
+    substr($content, $start, $len) = " ";
+    # The trailing semicolon will be handled by global cleanup
+}
+# Fix Label property names
+while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
+    my $brace = $+[0] - 1; my $end = find_block_end($content, $brace + 1);
+    my $inner = substr($content, $brace, $end - $brace);
+    $inner =~ s/\btitle:\s*/label: /g;
+    $inner =~ s/\bsubtitle:\s*[^;]+;//g;
+    substr($content, $brace, $end - $brace) = $inner;
+    pos($content) = $end;
+}
+# Semicolon Normalization: Remove all, then restore for props
+$content =~ s/\}\s*;/}/g;
+my @props = qw(adjustment popover title-widget menu-model model);
+my $p_regex = join("|", @props);
+while ($content =~ m/\b($p_regex):\s*[^;\{]+\{/g) {
+    my $end = find_block_end($content, $+[0]);
+    substr($content, $end, 0) = ";";
+    pos($content) = $end + 1;
+}
+print $content;
+EOF
+for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -102,13 +165,11 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force core libraries into AppImage
+# Force bundling of core libs
 export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0"
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
