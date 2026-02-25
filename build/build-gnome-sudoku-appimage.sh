@@ -32,41 +32,59 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Standalone Blueprint Patcher (Simplified and robust)
+# Standalone Blueprint Patcher (Ultimate robustness)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# Widget renames
+# 1. Complex Widget Decompositions
+# Adw.StatusPage -> Gtk.Box + Label
+$content =~ s/Adw\.StatusPage\s*\{/Gtk.Box { orientation: vertical; /g;
+
+# Adw.SpinRow -> Adw.ActionRow + suffix Gtk.SpinButton
+$content =~ s/Adw\.SpinRow\s+([a-zA-Z0-9_]+)\s*\{/Adw.ActionRow { title: " "; [suffix] Gtk.SpinButton $1 { valign: center; /g;
+# Adw.SwitchRow -> Adw.ActionRow + suffix Gtk.Switch
+$content =~ s/Adw\.SwitchRow\s+([a-zA-Z0-9_]+)\s*\{/Adw.ActionRow { title: " "; [suffix] Gtk.Switch $1 { valign: center; /g;
+
+# 2. Simple renames
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
-$content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# StatusPage special handling
-$content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
-
-# SpinRow/SwitchRow -> ActionRow + suffix
-# We do a simple rename and insert the widget inside the block.
-# This assumes the original row properties (title, adjustment) are compatible with ActionRow/SpinButton.
-$content =~ s/Adw\.SpinRow(\s+[a-zA-Z0-9_]+)?\s*\{/Adw.ActionRow$1 { [suffix] Gtk.SpinButton$1 { valign: center; /g;
-$content =~ s/Adw\.SwitchRow(\s+[a-zA-Z0-9_]+)?\s*\{/Adw.ActionRow$1 { [suffix] Gtk.Switch$1 { valign: center; /g;
-
-# Fix Gtk.Label properties
+# 3. Property Fixes
 $content =~ s/\btitle\s*:\s*/label: /g;
 $content =~ s/\bsub(?:title|label):\s*[^;]+;//g;
-
-# Strip modern wrappers
 $content =~ s/\b(content|child):\s*//g;
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# Semicolons
-# Remove ALL block semicolons
+# 4. Gtk.Box orientation fix
+$content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
+
+# 5. Semicolon Normalization (The definitive way)
+# Remove ALL semicolons following a closing brace
 $content =~ s/\}\s*;/}/g;
-# Add back to known properties that demand them
-$content =~ s/(\b(adjustment|popover|title-widget|menu-model|model):\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{[^{}]*\})*)\})/$1;/g;
+
+# Add back semicolons only for properties that take a block
+my @props = qw(adjustment popover title-widget menu-model model);
+foreach my $prop (@props) {
+    while ($content =~ m/\b$prop:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+        my $brace_start = $+[0] - 1;
+        my $count = 1;
+        my $pos = $brace_start + 1;
+        while ($count > 0 && $pos < length($content)) {
+            my $char = substr($content, $pos, 1);
+            if ($char eq '{') { $count++; }
+            elsif ($char eq '}') { $count--; }
+            $pos++;
+        }
+        if ($count == 0) {
+            substr($content, $pos, 0) = ";";
+            pos($content) = $pos + 1;
+        }
+    }
+}
 
 print $content;
 EOF
