@@ -62,6 +62,79 @@ print $content;
 EOF
 for css in "$PROJECT_DIR"/data/*.css; do perl patch_css.pl < "$css" > "$css.tmp" && mv "$css.tmp" "$css"; done
 
+# Blueprint Patcher
+cat << 'EOF' > patch_blp.pl
+undef $/;
+my $content = <STDIN>;
+sub find_block {
+    my ($str, $start_pos) = @_;
+    my $count = 1;
+    my $pos = $start_pos;
+    while ($count > 0 && $pos < length($str)) {
+        my $c = substr($str, $pos, 1);
+        if ($c eq '{') { $count++; }
+        elsif ($c eq '}') { $count--; }
+        $pos++;
+    }
+    return $pos;
+}
+foreach my $type (qw(Spin Switch)) {
+    while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
+        my $match_start = $-[0];
+        my $id = $1 // "tmp_id";
+        my $brace_start = $+[0] - 1;
+        my $block_end = find_block($content, $brace_start + 1);
+        my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
+        my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
+        my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
+        $inner =~ s/\bvalign:\s*[^;]+;//g;
+        my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+        my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
+        substr($content, $match_start, $block_end - $match_start) = $replacement;
+        pos($content) = $match_start + length($replacement);
+    }
+}
+while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
+    my $match_start = $-[0];
+    my $brace_start = $+[0] - 1;
+    my $block_end = find_block($content, $brace_start + 1);
+    my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
+    my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
+    $inner =~ s/\bvalign:\s*[^;]+;//g;
+    my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
+    substr($content, $match_start, $block_end - $match_start) = $replacement;
+    pos($content) = $match_start + length($replacement);
+}
+$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
+$content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
+$content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
+$content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
+    my $brace_start = $+[0] - 1;
+    my $block_end = find_block($content, $brace_start + 1);
+    my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
+    $inner =~ s/\btitle\s*:\s*/label: /g;
+    $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
+    substr($content, $brace_start + 1, $block_end - $brace_start - 2) = $inner;
+    pos($content) = $block_end;
+}
+$content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
+$content =~ s/\b(content|child):\s*//g;
+$content =~ s/\[(top|bottom|start|end)\]\s*//g;
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
+$content =~ s/\}\s*;/}/g;
+my @props = qw(adjustment popover title-widget menu-model model);
+foreach my $prop (@props) {
+    while ($content =~ m/\b$prop:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+        my $block_end = find_block($content, $+[0]);
+        substr($content, $block_end, 0) = ";";
+        pos($content) = $block_end + 1;
+    }
+}
+print $content;
+EOF
+for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+
 # Vala Patcher
 cat << 'EOF' > patch_vala.pl
 undef $/;
@@ -76,13 +149,13 @@ $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
 if ($file =~ /earmark.vala/) {
-    $content =~ s/public\s+void\s+play_hide_animation\s*\(\)\s*\{((?:[^{}]|(?1))*)\}/public void play_hide_animation () { }/g;
-    $content =~ s/public\s+void\s+skip_animation\s*\(\)\s*\{((?:[^{}]|(?1))*)\}/public void skip_animation () { }/g;
+    $content =~ s/public\s+void\s+play_hide_animation\s*\(\)\s*\{[^\}]*\}/public void play_hide_animation () { }/g;
+    $content =~ s/public\s+void\s+skip_animation\s*\(\)\s*\{[^\}]*\}/public void skip_animation () { }/g;
 }
 if ($file =~ /window.vala/) {
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
-    $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
-    $content =~ s/void\s+set_accent_color\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/void set_accent_color () { }/g;
+    $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{[^\}]*\}/private void visible_dialog_cb () { }/g;
+    $content =~ s/void\s+set_accent_color\s*\(\)\s*\{[^\}]*\}/void set_accent_color () { }/g;
     $content =~ s/style_manager.notify\s*\[\s*"accent-color"\s*\]/\/\/style_manager.notify/g;
     $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
@@ -126,13 +199,18 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
 ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
-# Deploy with GTK plugin
+# Deploy dependencies
 export DEPLOY_GTK_VERSION=4
+# Find paths to core libs to force bundling
+LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
+LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
+LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
+
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    --library $(find /usr/lib -name "libadwaita-1.so.0" | head -n 1) \
-    --library $(find /usr/lib -name "libgtk-4.so.1" | head -n 1) \
-    --library $(find /usr/lib -name "libgee-0.8.so.2" | head -n 1) \
+    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
+    ${LIBGTK:+ --library "$LIBGTK"} \
+    ${LIBGEE:+ --library "$LIBGEE"} \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
@@ -143,14 +221,13 @@ glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 # Overwrite AppRun with a guaranteed correct one
 cat << 'EOF' > "$APPDIR/AppRun"
 #!/bin/sh
-# root of the AppImage
 HERE="$(dirname "$(readlink -f "${0}")")"
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
 export GTK_THEME=Adwaita
-# Run the binary using the path relative to THIS AppRun
+# Run the binary
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
