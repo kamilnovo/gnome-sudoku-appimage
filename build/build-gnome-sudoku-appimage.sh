@@ -32,12 +32,12 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Standalone Blueprint Patcher
+# Standalone Blueprint Patcher (Tested locally with blueprint-compiler)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# --- FIRST PASS: WIDGET AND PROPERTY TRANSFORMATIONS (BEFORE SEMICOLON HANDLING) ---
+# --- PHASE 1: WIDGET AND PROPERTY TRANSFORMATIONS ---
 
 # 1. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
 $content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
@@ -79,17 +79,17 @@ $content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
 # This assumes that if it remains as "Widget { ... }", it's a direct child.
 $content =~ s/\b(content|child):\s*//g;
 
-# 7. Remove modern properties
-$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
-
-# 8. Remove slot markers (e.g., [top], [end])
+# 7. Remove slot markers (e.g., [top], [end])
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
 
+# 8. Remove modern properties
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
-# --- SECOND PASS: SEMICOLON NORMALIZATION ---
 
-# 9. Strip ALL semicolons after closing braces of widget blocks.
-#    This is the base state for direct children (no semicolons).
+# --- PHASE 2: SEMICOLON NORMALIZATION (Global Strip then Targeted Re-insert) ---
+
+# 9. Strip ALL semicolons AFTER closing braces of widget blocks.
+#    This establishes a baseline where no widget block has a trailing semicolon.
 $content =~ s/\}\s*;/}/g;
 
 # 10. Specific fix: Semicolons are forbidden after 'styles [...]' blocks.
@@ -98,10 +98,11 @@ $content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
 # 11. ADD semicolons back to specific, known properties that REQUIRE them.
 #     These are properties whose values are widget blocks, and Blueprint demands a semicolon.
 #     This is a targeted re-insertion to satisfy the Blueprint compiler.
-#     Using a pattern that matches the whole line to ensure it's a top-level property assignment.
-#     Example: popover: PopoverMenu main_menu { ... }  --> popover: PopoverMenu main_menu { ... };
-#     Example: title-widget: Gtk.Label windowtitle { ... } --> title-widget: Gtk.Label windowtitle { ... };
-$content =~ s/^((\s*)(popover|title-widget):(\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?5)\})*)\}))\s*$/$1;/mg;
+#     Matches a property assignment with a block value and ensures it ends with a semicolon.
+#     This matches lines like: "property_name: WidgetType [id] { ... }"
+#     It looks for a line that starts with optional whitespace, then a property name followed by ':',
+#     then a WidgetType, optional ID, and a block {...}. If it doesn't end with ';', add one.
+$content =~ s/^(\s*[a-zA-Z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?5)\})*)\})\s*$/$1;/mg;
 
 
 print $content;
