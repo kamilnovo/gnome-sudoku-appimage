@@ -32,78 +32,67 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Standalone Blueprint Patcher (Tested locally with blueprint-compiler)
+# Standalone Blueprint Patcher (Harden for multi-line and recursive blocks)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
 
-# --- PHASE 1: WIDGET AND PROPERTY TRANSFORMATIONS ---
+# 1. Protection Pass: Hide semicolons of property-block assignments.
+# This regex is recursive to handle nested braces and uses /s to match across lines.
+# It matches "name: Type [id] { ... };"
+$content =~ s/(\b[a-zA-Z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*(\{(?:[^{}]|(?2))*\}))\s*;/$1__SEMICOLON__/gs;
 
-# 1. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
-$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|\{(?1)\})*)\}/
+# 2. Handle Adw.StatusPage -> Gtk.Box + Gtk.Label
+$content =~ s/Adw\.StatusPage\s*\{((?:[^{}]|(?1))*)\}/
     my $inner = $1;
     my $title = ($inner =~ s#\btitle:\s*(_\("[^"]+"\));##) ? $1 : "";
     $inner =~ s#\bvalign:\s*[^;]+;##g;
     $inner =~ s#\bchild:##g;
     "Gtk.Box { orientation: vertical; valign: start; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }"
-/gex;
+/ges;
 
-# 2. Handle Adw.SpinRow and Adw.SwitchRow -> Adw.ActionRow with [suffix]
-$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|\{(?3)\})*)\}/
+# 3. Handle Adw.SpinRow and Adw.SwitchRow -> Adw.ActionRow with [suffix]
+$content =~ s/Adw\.(Spin|Switch)Row\s+([a-zA-Z0-9_]+)\s*\{((?:[^{}]|(?3))*)\}/
     my ($type, $id, $inner) = ($1, $2, $3);
     my $action_row_props = "";
     $action_row_props .= ($inner =~ s#\btitle:\s*([^;]+);##) ? "title: $1;" : "";
     $action_row_props .= ($inner =~ s#\buse-underline:\s*([^;]+);##) ? "use-underline: $1;" : "";
     my $widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
     "Adw.ActionRow { $action_row_props [suffix] $widget $id { valign: center; $inner } }"
-/gex;
+/ges;
 
-# 3. Downgrade other widgets (escape dots for safety)
+# 4. Downgrade other widgets
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 4. Fix Gtk.Box needs orientation (only add if not already present)
-$content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /g;
+# 5. Fix Gtk.Box orientation
+$content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
 
-# 5. Correct Gtk.Label properties (title -> label, remove subtitle)
-$content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|\{(?2)\})*)\}/
+# 6. Correct Gtk.Label properties (title -> label, remove subtitle)
+$content =~ s/(Gtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{)((?:[^{}]|(?2))*)\}/
     my ($head, $body) = ($1, $2);
     $body =~ s#\btitle\s*:#label: #g;
     $body =~ s#\bsub(?:title|label):\s*[^;]+;##g;
     "$head$body}"
-/gex;
+/ges;
 
-# 6. Remove modern property wrappers (content:, child:) from ALL contexts.
-# This assumes that if it remains as "Widget { ... }", it's a direct child.
+# 7. Remove modern property wrappers (content:, child:)
 $content =~ s/\b(content|child):\s*//g;
-
-# 7. Remove slot markers (e.g., [top], [end])
-$content =~ s/\[(top|bottom|start|end)\]\s*//g;
+$content =~ s/\[(top|bottom)\]\s*//g;
 
 # 8. Remove modern properties
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
 
+# 9. FINAL SYNTAX NORMALIZATION
+# Remove ALL semicolons after closing braces (they are now only on child widgets).
+$content =~ s/\}\s*;/}/gs;
+# Specific fix for styles semicolon
+$content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/gs;
 
-# --- PHASE 2: SEMICOLON NORMALIZATION (Global Strip then Targeted Re-insert) ---
-
-# 9. Strip ALL semicolons AFTER closing braces of widget blocks.
-#    This establishes a baseline where no widget block has a trailing semicolon.
-$content =~ s/\}\s*;/}/g;
-
-# 10. Specific fix: Semicolons are forbidden after 'styles [...]' blocks.
-$content =~ s/(styles\s*\[[^\]]+\])\s*;/\1/g;
-
-# 11. ADD semicolons back to specific, known properties that REQUIRE them.
-#     These are properties whose values are widget blocks, and Blueprint demands a semicolon.
-#     This is a targeted re-insertion to satisfy the Blueprint compiler.
-#     Matches a property assignment with a block value and ensures it ends with a semicolon.
-#     This matches lines like: "property_name: WidgetType [id] { ... }"
-#     It looks for a line that starts with optional whitespace, then a property name followed by ':',
-#     then a WidgetType, optional ID, and a block {...}. If it doesn't end with ';', add one.
-$content =~ s/^(\s*[a-zA-Z0-9_-]+:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{((?:[^{}]|\{(?5)\})*)\})\s*$/$1;/mg;
-
+# 10. Restore Protected semicolons
+$content =~ s/__SEMICOLON__/;/g;
 
 print $content;
 EOF
