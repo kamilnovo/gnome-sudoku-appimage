@@ -50,7 +50,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala: Precision stubs and type replacements
+# Vala precision patcher
 cat << 'EOF' > patch_vala.pl
 undef $/;
 my $content = <STDIN>;
@@ -89,7 +89,7 @@ print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint: Single-pass character scanner
+# Blueprint precision patcher
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -114,29 +114,31 @@ $content =~ s/\bAdw\.SwitchRow\b/Adw.ActionRow/g;
 # Strip modern props
 $content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
 $content =~ s/\[(top|bottom|start|end)\]//g;
-# Identify property blocks and remove their prefixes/suffixes
-while ($content =~ m/\b(content|child):\s*(?:[a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/g) {
-    my $start = $-[0]; my $brace_end = $+[0];
+# Process property blocks
+while ($content =~ m/\b(content|child|title-widget|menu-model|model|adjustment|popover):\s*([a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/g) {
+    my $match_start = $-[0]; my $brace_end = $+[0];
+    my $prop_name = $1;
     my $end = find_block_end($content, $brace_end);
-    # Remove "content: "
-    substr($content, $start, $brace_end - $start) =~ s/(content|child):\s*//;
-    # Remove trailing ";"
-    if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = " "; }
-    # Recalculate end for safety or just reset pos
+    if ($prop_name eq 'content' || $prop_name eq 'child') {
+        # Remove "content: " prefix and trailing ";"
+        substr($content, $match_start, $brace_end - $match_start) =~ s/$prop_name:\s*//;
+        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = " "; }
+    } else {
+        # Ensure semicolon for property blocks
+        if (substr($content, $end, 1) ne ';') { substr($content, $end, 0) = ";"; }
+    }
     pos($content) = 0;
 }
-# Final property cleanup
-$content =~ s/\btitle: /label: /g;
-$content =~ s/\bsubtitle: [^;]*;//g;
-$content =~ s/\}\s*;/}/g;
-# Restore semicolons for REMAINING properties
-my @props = qw(adjustment popover title-widget menu-model model);
-my $p_regex = join("|", @props);
-while ($content =~ m/\b($p_regex):\s*[^;\{]+\{/g) {
-    my $end = find_block_end($content, $+[0]);
-    if (substr($content, $end, 1) ne ';') { substr($content, $end, 0) = ";"; }
-    pos($content) = $end + 1;
+# Fix Label properties (ONLY in Gtk.Label blocks)
+while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
+    my $brace_end = $+[0]; my $end = find_block_end($content, $brace_end);
+    my $inner = substr($content, $brace_end, $end - $brace_end - 1);
+    $inner =~ s/\btitle:\s*/label: /g;
+    $inner =~ s/\bsubtitle:\s*[^;]+;//g;
+    substr($content, $brace_end, $end - $brace_end - 1) = $inner;
 }
+# Global semicolon cleanup for orphan semicolons
+$content =~ s/\}\s*;\s*\}/\}\}/g;
 print $content;
 EOF
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
