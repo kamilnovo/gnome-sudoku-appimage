@@ -43,7 +43,17 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
-# Standalone Blueprint Patcher (High-fidelity parser)
+# Patch CSS for GTK 4.8
+find "$PROJECT_DIR/data" -name "*.css" | while read css; do
+    echo "Patching CSS: $css"
+    sed -i 's/oklch([^)]*)/#3584e4/g' "$css"
+    sed -i 's/oklab([^)]*)/#3584e4/g' "$css"
+    sed -i 's/background: oklch(from [^;]*;//g' "$css"
+    sed -i 's/color: oklab(from [^;]*;//g' "$css"
+    sed -i 's/:root/window/g' "$css"
+done
+
+# Standalone Blueprint Patcher
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -61,7 +71,6 @@ sub find_block {
     return $pos;
 }
 
-# 1. Transform Adw.SpinRow and Adw.SwitchRow
 foreach my $type (qw(Spin Switch)) {
     while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
         my $match_start = $-[0];
@@ -69,11 +78,9 @@ foreach my $type (qw(Spin Switch)) {
         my $brace_start = $+[0] - 1;
         my $block_end = find_block($content, $brace_start + 1);
         my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
-        
         my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
         my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
         $inner =~ s/\bvalign:\s*[^;]+;//g;
-        
         my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
         my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
         substr($content, $match_start, $block_end - $match_start) = $replacement;
@@ -81,28 +88,23 @@ foreach my $type (qw(Spin Switch)) {
     }
 }
 
-# 2. Transform Adw.StatusPage
 while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $match_start = $-[0];
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
     my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
-    
     my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
     $inner =~ s/\bvalign:\s*[^;]+;//g;
-    
     my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
     substr($content, $match_start, $block_end - $match_start) = $replacement;
     pos($content) = $match_start + length($replacement);
 }
 
-# 3. Global Widget Downgrades
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
 
-# 4. Correct Gtk.Label properties
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
@@ -113,15 +115,10 @@ while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     pos($content) = $block_end;
 }
 
-# 5. Fix Gtk.Box needs orientation
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
-
-# 6. Strip modern properties
 $content =~ s/\b(content|child):\s*//g;
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
 $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
-
-# 7. Semicolon Normalization
 $content =~ s/\}\s*;/}/g;
 my @props = qw(adjustment popover title-widget menu-model model);
 foreach my $prop (@props) {
@@ -131,34 +128,27 @@ foreach my $prop (@props) {
         pos($content) = $block_end + 1;
     }
 }
-
 print $content;
 EOF
 
-# Apply Blueprint patches
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
     echo "Patching Blueprint: $f"
     perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
 
-# Standalone Vala Patcher (Ultimate type alignment)
+# Standalone Vala Patcher
 cat << 'EOF' > patch_vala.pl
 undef $/;
 my $content = <STDIN>;
 my $file = $ARGV[0];
-
-# 1. Global API and type mapping
 $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
 $content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
 $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
 $content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
 $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
-
-# 2. Fix property usage for downgraded widgets
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
-
 if ($file =~ /window.vala/) {
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
     $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
@@ -167,7 +157,6 @@ if ($file =~ /window.vala/) {
     $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
 }
-
 if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/ || $file =~ /game-view.vala/) {
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
     my $parent = ($file =~ /gnome-sudoku.vala/) ? "window" : "null";
@@ -180,20 +169,16 @@ if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/ || $file =~ /game-vi
     $content =~ s/about_dialog.set_developers/about_dialog.set_authors/g;
     $content =~ s/\.present\s*\(\s*window\s*\)/.present()/g;
 }
-
 if ($file =~ /preferences-dialog.vala/) {
     $content =~ s/Adw.PreferencesDialog/Adw.PreferencesWindow/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose_template/g;
 }
-
 if ($file =~ /print-dialog.vala/) {
     $content =~ s/Adw.Dialog/Adw.Window/g;
 }
-
 print $content;
 EOF
 
-# Apply Vala patches
 find "$PROJECT_DIR"/src "$PROJECT_DIR"/lib -name "*.vala" -print0 | while IFS= read -r -d $'\0' f; do
     echo "Patching Vala: $f"
     perl patch_vala.pl "$f" < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
@@ -210,9 +195,14 @@ meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
+# Compile schemas in AppDir
+echo "=== Compiling GSettings schemas ==-"
+glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
+
 # 5. Packaging
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-chmod +x linuxdeploy
+wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
+chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
 
 export PATH="$PWD:$PATH"
 export VERSION
@@ -221,10 +211,13 @@ export VERSION
 DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
 ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
+# Run linuxdeploy with GTK plugin
+# The GTK plugin will handle schemas and other GTK-specific needs.
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
+    --plugin gtk \
     --output appimage
 
 mv *.AppImage "$REPO_ROOT/" 2>/dev/null || true
