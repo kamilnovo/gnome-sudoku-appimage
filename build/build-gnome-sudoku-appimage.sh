@@ -35,7 +35,7 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Patch Sudoku
 echo "=== Patching Sudoku ==-"
-# Force versions
+# Meson fixes
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
@@ -50,121 +50,51 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# High-fidelity block matching logic
-cat << 'EOF' > patch_blocks.pl
+# Vala Fixes (Surgical replacements)
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SwitchRow/unowned Gtk.Switch/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.ToolbarView/unowned Gtk.Box/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.StatusPage/unowned Gtk.Box/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/windowtitle.subtitle = .*;/ \/* stub *\/ /g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/windowtitle.title = /windowtitle.label = /g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/ \/* stub *\/ /g' {} +
+
+# Vala: MessageDialog constructor mapping
+cat << 'EOF' > fix_vala.pl
 undef $/;
 my $content = <STDIN>;
-my $mode = $ARGV[0];
-
-sub find_block_end {
-    my ($str, $brace_pos) = @_;
-    my $count = 1; my $pos = $brace_pos + 1;
-    while ($count > 0 && $pos < length($str)) {
-        my $c = substr($str, $pos, 1);
-        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
-        $pos++;
-    }
-    return $pos;
-}
-
-if ($mode eq 'blp') {
-    # 1. Transform SpinRow and SwitchRow
-    foreach my $type (qw(Spin Switch)) {
-        while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/) {
-            my $start = $-[0]; my $id = $1 // "tmp_id"; my $brace = $+[0] - 1;
-            my $end = find_block_end($content, $brace);
-            my $inner = substr($content, $brace + 1, $end - $brace - 2);
-            my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
-            my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
-            $inner =~ s/\bvalign:\s*[^;]+;//g;
-            my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-            my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
-            substr($content, $start, $end - $start) = $replacement;
-        }
-    }
-    # 2. StatusPage transformation
-    while ($content =~ m/\bAdw\.StatusPage\s*\{/) {
-        my $start = $-[0]; my $brace = $+[0] - 1;
-        my $end = find_block_end($content, $brace);
-        my $inner = substr($content, $brace + 1, $end - $brace - 2);
-        my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
-        my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
-        substr($content, $start, $end - $start) = $replacement;
-    }
-    # 3. Handle content: and child: blocks (Strip but keep the block)
-    while ($content =~ m/\b(content|child):\s*([a-zA-Z0-9\.\$]+\s*)?(?:[a-zA-Z0-9_]+\s*)?\{/) {
-        my $start = $-[0]; my $brace = $+[0] - 1;
-        my $end = find_block_end($content, $brace);
-        my $len = $brace - $start;
-        my $prefix = substr($content, $start, $len);
-        $prefix =~ s/\b(content|child):\s*//;
-        substr($content, $start, $len) = $prefix;
-        # Update brace and end pos
-        $brace = $start + length($prefix);
-        $end = find_block_end($content, $brace);
-        if (substr($content, $end, 1) eq ';') { substr($content, $end, 1) = ""; }
-    }
-    # 4. Global downgrades
-    $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
-    $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
-    $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
-    $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    # 5. Strip modern attributes correctly
-    $content =~ s/^\s*(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*$//mg;
-    $content =~ s/\[(top|bottom|start|end)\]\s*//g;
-    # 6. Fix Label properties
-    while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
-        my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
-        my $inner = substr($content, $brace + 1, $end - $brace - 2);
-        $inner =~ s/\btitle\s*:\s*/label: /g;
-        $inner =~ s/\bsubtitle:\s*[^;]+;//g;
-        substr($content, $brace + 1, $end - $brace - 2) = $inner;
-        pos($content) = $end;
-    }
-    # 7. Semicolon Normalization
-    $content =~ s/\}\s*;/}/g;
-    my @props = qw(adjustment popover title-widget menu-model model);
-    foreach my $p (@props) {
-        while ($content =~ m/\b$p:\s*[^;\{]+\{/g) {
-            my $brace = $+[0] - 1; my $end = find_block_end($content, $brace);
-            substr($content, $end, 0) = ";";
-            pos($content) = $end + 1;
-        }
-    }
-}
-
-if ($mode eq 'vala') {
-    $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
-    $content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
-    $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
-    $content =~ s/\bunowned\s+Adw\.SwitchRow/unowned Gtk.Switch/g;
-    $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
-    $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
-    $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
-    $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
-    $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
-    $content =~ s/accent_provider\.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
-    $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
-    my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
-    foreach my $f (@funcs) {
-        while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/) {
-            my $start = $-[0]; my $brace = $+[0] - 1;
-            my $end = find_block_end($content, $brace);
-            my $replacement = "void $f () { }";
-            substr($content, $start, $end - $start) = $replacement;
-        }
-    }
-    $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
-        my $args = $1; if ($args !~ m/,/) { $args .= ", null"; }
-        "new Adw.MessageDialog(null, $args);"
-    }ge;
-}
+# Transform new Adw.MessageDialog(...) to Adw.MessageDialog(parent, ...)
+# Simple approach: inject null as parent
+$content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
+$content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageDialog(null, $1, $2)/g;
+# Stub animation methods
+$content =~ s/public\s+void\s+(?:play_hide_animation|skip_animation)\s*\(\)\s*\{[^\}]*\}/void placeholder () { }/g;
 print $content;
 EOF
+find "$PROJECT_DIR" -name "*.vala" | while read f; do perl fix_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blocks.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
-find "$PROJECT_DIR" -name "*.vala" | while read f; do perl patch_blocks.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+# Blueprint Fixes (Minimalist approach)
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
+# Delete problematic lines
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/top-bar-style:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/centering-policy:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/content:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/child:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/\[(top|bottom|start|end)\]/d' {} +
+# Semicolon fix: just remove them all after braces
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -198,8 +128,6 @@ LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
     ${LIBADWAITA:+ --library "$LIBADWAITA"} \
     ${LIBGTK:+ --library "$LIBGTK"} \
     ${LIBGEE:+ --library "$LIBGEE"} \
-    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
