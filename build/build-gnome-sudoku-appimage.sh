@@ -39,19 +39,32 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meso
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
 
-# Inject Pango/PangoCairo into Vala arguments
+# Inject Pango/PangoCairo
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
-# Robust CSS Patcher (Avoids junk and blue-overload)
+# Robust CSS Patcher with color mapping
 cat << 'EOF' > patch_css.pl
 undef $/;
 my $content = <STDIN>;
-# Replace oklch/oklab with neutral or standard colors
-$content =~ s/oklch\([^)]*\)/#3584e4/g; # Still use blue for variables
+# Map accent variables to hex
+$content =~ s/--sudoku-accent-blue:\s*oklch\([^)]*\)/--sudoku-accent-blue: #3584e4/g;
+$content =~ s/--sudoku-accent-teal:\s*oklch\([^)]*\)/--sudoku-accent-teal: #33d17a/g;
+$content =~ s/--sudoku-accent-green:\s*oklch\([^)]*\)/--sudoku-accent-green: #2ec27e/g;
+$content =~ s/--sudoku-accent-yellow:\s*oklch\([^)]*\)/--sudoku-accent-yellow: #f8e45c/g;
+$content =~ s/--sudoku-accent-orange:\s*oklch\([^)]*\)/--sudoku-accent-orange: #ffa348/g;
+$content =~ s/--sudoku-accent-red:\s*oklch\([^)]*\)/--sudoku-accent-red: #ed333b/g;
+$content =~ s/--sudoku-accent-pink:\s*oklch\([^)]*\)/--sudoku-accent-pink: #ff7b9c/g;
+$content =~ s/--sudoku-accent-purple:\s*oklch\([^)]*\)/--sudoku-accent-purple: #9141ac/g;
+$content =~ s/--sudoku-accent-slate:\s*oklch\([^)]*\)/--sudoku-accent-slate: #6f7172/g;
+
+# Global replacement for remaining oklch/oklab
+$content =~ s/oklch\([^)]*\)/#3584e4/g;
 $content =~ s/oklab\([^)]*\)/#3584e4/g;
-# Strip relative color syntax lines entirely to avoid "junk at end of value"
+
+# Strip relative color lines entirely
 $content =~ s/^[ \t]*(background|color|transition|animation):[^;]*okl[ch]ab?\(from[^;]*;[ \t]*\n?//mg;
+
 # Replace :root with *
 $content =~ s/:root/*/g;
 print $content;
@@ -78,8 +91,6 @@ sub find_block {
     }
     return $pos;
 }
-# Transform Adw.SpinRow and Adw.SwitchRow to ActionRow + suffix
-# Improved to move properties correctly
 foreach my $type (qw(Spin Switch)) {
     while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
         my $match_start = $-[0];
@@ -87,19 +98,15 @@ foreach my $type (qw(Spin Switch)) {
         my $brace_start = $+[0] - 1;
         my $block_end = find_block($content, $brace_start + 1);
         my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
-        
         my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
         my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
         $inner =~ s/\bvalign:\s*[^;]+;//g;
-        
         my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
-        # We put the ID on the INNER widget so Vala GtkChild works
         my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
         substr($content, $match_start, $block_end - $match_start) = $replacement;
         pos($content) = $match_start + length($replacement);
     }
 }
-# Adw.StatusPage -> Gtk.Box
 while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $match_start = $-[0];
     my $brace_start = $+[0] - 1;
@@ -115,7 +122,6 @@ $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-# Fix Label properties globally in blocks
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
@@ -160,10 +166,10 @@ $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
 
-# Disable animations in earmark.vala to fix potential crash
+# Fix potential crash in earmark.vala by disabling animations properly
 if ($file =~ /earmark.vala/) {
-    $content =~ s/hide_animation\.play\s*\(\s*\);/\/\/animation disabled/g;
-    $content =~ s/hide_animation\.skip\s*\(\s*\);/\/\/animation disabled/g;
+    $content =~ s/public\s+void\s+play_hide_animation\s*\(\)\s*\{((?:[^{}]|(?1))*)\}/public void play_hide_animation () { }/g;
+    $content =~ s/public\s+void\s+skip_animation\s*\(\)\s*\{((?:[^{}]|(?1))*)\}/public void skip_animation () { }/g;
 }
 
 if ($file =~ /window.vala/) {
@@ -242,7 +248,6 @@ export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
-# Force a neutral theme or ignore system variables that might break it
 export GTK_THEME=Adwaita
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
