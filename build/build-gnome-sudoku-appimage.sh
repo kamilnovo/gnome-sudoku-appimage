@@ -43,11 +43,10 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
-# Robust CSS Patcher with color mapping
+# Robust CSS Patcher
 cat << 'EOF' > patch_css.pl
 undef $/;
 my $content = <STDIN>;
-# Map accent variables to hex
 $content =~ s/--sudoku-accent-blue:\s*oklch\([^)]*\)/--sudoku-accent-blue: #3584e4/g;
 $content =~ s/--sudoku-accent-teal:\s*oklch\([^)]*\)/--sudoku-accent-teal: #33d17a/g;
 $content =~ s/--sudoku-accent-green:\s*oklch\([^)]*\)/--sudoku-accent-green: #2ec27e/g;
@@ -57,15 +56,9 @@ $content =~ s/--sudoku-accent-red:\s*oklch\([^)]*\)/--sudoku-accent-red: #ed333b
 $content =~ s/--sudoku-accent-pink:\s*oklch\([^)]*\)/--sudoku-accent-pink: #ff7b9c/g;
 $content =~ s/--sudoku-accent-purple:\s*oklch\([^)]*\)/--sudoku-accent-purple: #9141ac/g;
 $content =~ s/--sudoku-accent-slate:\s*oklch\([^)]*\)/--sudoku-accent-slate: #6f7172/g;
-
-# Global replacement for remaining oklch/oklab
 $content =~ s/oklch\([^)]*\)/#3584e4/g;
 $content =~ s/oklab\([^)]*\)/#3584e4/g;
-
-# Strip relative color lines entirely
 $content =~ s/^[ \t]*(background|color|transition|animation):[^;]*okl[ch]ab?\(from[^;]*;[ \t]*\n?//mg;
-
-# Replace :root with *
 $content =~ s/:root/*/g;
 print $content;
 EOF
@@ -165,13 +158,10 @@ $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
-
-# Fix potential crash in earmark.vala by disabling animations properly
 if ($file =~ /earmark.vala/) {
     $content =~ s/public\s+void\s+play_hide_animation\s*\(\)\s*\{((?:[^{}]|(?1))*)\}/public void play_hide_animation () { }/g;
     $content =~ s/public\s+void\s+skip_animation\s*\(\)\s*\{((?:[^{}]|(?1))*)\}/public void skip_animation () { }/g;
 }
-
 if ($file =~ /window.vala/) {
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
     $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
