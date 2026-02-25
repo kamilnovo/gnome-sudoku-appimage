@@ -62,13 +62,13 @@ print $content;
 EOF
 for css in "$PROJECT_DIR"/data/*.css; do perl patch_css.pl < "$css" > "$css.tmp" && mv "$css.tmp" "$css"; done
 
-# Robust Patcher
+# Ultimate Patcher
 cat << 'EOF' > patch_file.pl
 undef $/;
 my $content = <STDIN>;
 my $mode = $ARGV[0];
 
-sub get_block {
+sub find_block_end {
     my ($str, $start_pos) = @_;
     my $count = 1;
     my $pos = $start_pos;
@@ -78,37 +78,69 @@ sub get_block {
         elsif ($c eq '}') { $count--; }
         $pos++;
     }
-    return substr($str, $start_pos, $pos - $start_pos - 1);
+    return $pos;
 }
 
 if ($mode eq 'blp') {
+    # Transform Adw.SpinRow and Adw.SwitchRow BEFORE other downgrades
+    foreach my $type (qw(Spin Switch)) {
+        while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
+            my $match_start = $-[0];
+            my $id = $1 // "tmp_id";
+            my $brace_start = $+[0] - 1;
+            my $block_end = find_block_end($content, $brace_start + 1);
+            my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
+            my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
+            my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
+            $inner =~ s/\bvalign:\s*[^;]+;//g;
+            my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+            my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
+            substr($content, $match_start, $block_end - $match_start) = $replacement;
+            pos($content) = $match_start + length($replacement);
+        }
+    }
+
+    # Transform Adw.StatusPage
+    while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
+        my $match_start = $-[0];
+        my $brace_start = $+[0] - 1;
+        my $block_end = find_block_end($content, $brace_start + 1);
+        my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
+        my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
+        $inner =~ s/\bvalign:\s*[^;]+;//g;
+        my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
+        substr($content, $match_start, $block_end - $match_start) = $replacement;
+        pos($content) = $match_start + length($replacement);
+    }
+
     $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
     $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    
-    # Strip modern attributes but preserve structure
     $content =~ s/\b(content|child):\s*//g;
     $content =~ s/\[(top|bottom|start|end)\]\s*//g;
     $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
-    
-    # Fix Gtk.Label properties
+
+    # Correct Label properties
     while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
-        my $brace = $+[0];
-        my $inner = get_block($content, $brace);
+        my $brace_start = $+[0] - 1;
+        my $block_end = find_block_end($content, $brace_start + 1);
+        my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
         $inner =~ s/\btitle\s*:\s*/label: /g;
         $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
-        substr($content, $brace, length($inner)) = $inner;
-        pos($content) = $brace + length($inner) + 1;
+        substr($content, $brace_start + 1, $block_end - $brace_start - 2) = $inner;
+        pos($content) = $block_end;
     }
-    
-    # Semicolon Normalization: Remove ';' after '}' if it's not a property assignment
-    # We do this by looking for '};' that aren't preceded by common property names
+
+    # Semicolon Normalization
     $content =~ s/\}\s*;/}/g;
-    # Restore semicolons ONLY for properties that need them (e.g. title-widget: ...)
     my @props = qw(adjustment popover title-widget menu-model model);
-    foreach my $p (@props) {
-        $content =~ s/\b($p\s*:\s*[^;\{]+\{[^\}]+\})/$1;/g;
+    foreach my $prop (@props) {
+        while ($content =~ m/\b$prop:\s*[a-zA-Z0-9\.\$]+\s*[a-zA-Z0-9_]*\s*\{/g) {
+            my $block_end = find_block_end($content, $+[0]);
+            substr($content, $block_end, 0) = ";";
+            pos($content) = $block_end + 1;
+        }
     }
 }
 
@@ -124,15 +156,15 @@ if ($mode eq 'vala') {
     $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
     
-    # Stub functions safely using character-based block matching
+    # Stub functions safely
     my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
     foreach my $f (@funcs) {
         while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
             my $start = $-[0];
             my $brace = $+[0];
-            my $inner = get_block($content, $brace);
+            my $block_end = find_block_end($content, $brace);
             my $replacement = "void $f () { }";
-            substr($content, $start, length($inner) + ($brace - $start) + 1) = $replacement;
+            substr($content, $start, $block_end - $start) = $replacement;
             pos($content) = $start + length($replacement);
         }
     }
@@ -181,7 +213,6 @@ ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | h
 
 # Deploy with GTK plugin and forced bundling
 export DEPLOY_GTK_VERSION=4
-# Force bundling of core libs
 LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
 LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
 LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
