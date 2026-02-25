@@ -31,10 +31,12 @@ echo "=== Patching Sudoku for Debian 12 ==-"
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
-# Add missing Pango dependencies for older Vala/Meson
-sed -i "s/dependency('qqwing'),/dependency('qqwing'), dependency('pango'), dependency('pangocairo'),/" "$PROJECT_DIR/meson.build"
 
-# Standalone Blueprint Patcher (Ultimate robustness)
+# Add missing Pango dependencies globally in Meson
+# We find where dependencies are added to arrays and inject pango/pangocairo
+find "$PROJECT_DIR" -name "meson.build" -exec sed -i "s/dependency('gtk4'/dependency('pango'), dependency('pangocairo'), dependency('gtk4'/g" {} +
+
+# Standalone Blueprint Patcher (Proven high-fidelity)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
