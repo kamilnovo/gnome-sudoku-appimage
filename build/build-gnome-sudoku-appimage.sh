@@ -62,7 +62,7 @@ print $content;
 EOF
 for css in "$PROJECT_DIR"/data/*.css; do perl patch_css.pl < "$css" > "$css.tmp" && mv "$css.tmp" "$css"; done
 
-# Hardened Character-by-Character Patcher for BLP and Vala
+# Robust Patcher
 cat << 'EOF' > patch_file.pl
 undef $/;
 my $content = <STDIN>;
@@ -86,30 +86,29 @@ if ($mode eq 'blp') {
     $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+    
+    # Strip modern attributes but preserve structure
     $content =~ s/\b(content|child):\s*//g;
     $content =~ s/\[(top|bottom|start|end)\]\s*//g;
     $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
     
-    # Transform Adw.StatusPage to Gtk.Box + Gtk.Label
-    while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
-        my $start = $-[0];
-        my $brace = $+[0];
-        my $inner = get_block($content, $brace);
-        my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
-        my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
-        substr($content, $start, length($inner) + ($brace - $start) + 1) = $replacement;
-        pos($content) = $start + length($replacement);
-    }
-    
-    # Fix Label properties
+    # Fix Gtk.Label properties
     while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
-        my $start = $-[0];
         my $brace = $+[0];
         my $inner = get_block($content, $brace);
         $inner =~ s/\btitle\s*:\s*/label: /g;
         $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
         substr($content, $brace, length($inner)) = $inner;
-        pos($content) = $start + length($inner) + ($brace - $start) + 1;
+        pos($content) = $brace + length($inner) + 1;
+    }
+    
+    # Semicolon Normalization: Remove ';' after '}' if it's not a property assignment
+    # We do this by looking for '};' that aren't preceded by common property names
+    $content =~ s/\}\s*;/}/g;
+    # Restore semicolons ONLY for properties that need them (e.g. title-widget: ...)
+    my @props = qw(adjustment popover title-widget menu-model model);
+    foreach my $p (@props) {
+        $content =~ s/\b($p\s*:\s*[^;\{]+\{[^\}]+\})/$1;/g;
     }
 }
 
@@ -125,7 +124,7 @@ if ($mode eq 'vala') {
     $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
     $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
     
-    # Stub functions safely
+    # Stub functions safely using character-based block matching
     my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
     foreach my $f (@funcs) {
         while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
@@ -145,20 +144,14 @@ if ($mode eq 'vala') {
         "new Adw.MessageDialog(null, $args);"
     }ge;
 }
-
 print $content;
 EOF
 
 # Apply patches
 echo "Patching Blueprints..."
-for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
-    perl patch_file.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-done
-
+for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_file.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 echo "Patching Vala..."
-find "$PROJECT_DIR"/src "$PROJECT_DIR"/lib -name "*.vala" -print0 | while IFS= read -r -d $'\0' f; do
-    perl patch_file.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-done
+find "$PROJECT_DIR"/src "$PROJECT_DIR"/lib -name "*.vala" -print0 | while IFS= read -r -d $'\0' f; do perl patch_file.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
