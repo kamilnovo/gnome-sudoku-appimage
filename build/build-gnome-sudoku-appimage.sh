@@ -239,6 +239,7 @@ export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
 export GTK_THEME=Adwaita
+# Use absolute path relative to mount point
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
