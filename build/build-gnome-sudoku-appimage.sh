@@ -9,7 +9,7 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# Install missing system dependencies for packaging
+# Install missing system dependencies
 if [ "$EUID" -eq 0 ]; then
     apt-get update && apt-get install -y file
 else
@@ -46,12 +46,10 @@ sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = st
 # Patch CSS for GTK 4.8
 find "$PROJECT_DIR/data" -name "*.css" | while read css; do
     echo "Patching CSS: $css"
-    # Replace oklch/oklab with simple fallbacks
     sed -i 's/oklch([^)]*)/#3584e4/g' "$css"
     sed -i 's/oklab([^)]*)/#3584e4/g' "$css"
     sed -i 's/background: oklch(from [^;]*;//g' "$css"
     sed -i 's/color: oklab(from [^;]*;//g' "$css"
-    # Replace :root with *
     sed -i 's/:root/*/g' "$css"
 done
 
@@ -59,7 +57,6 @@ done
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
-
 sub find_block {
     my ($str, $start_pos) = @_;
     my $count = 1;
@@ -72,7 +69,6 @@ sub find_block {
     }
     return $pos;
 }
-
 foreach my $type (qw(Spin Switch)) {
     while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
         my $match_start = $-[0];
@@ -89,7 +85,6 @@ foreach my $type (qw(Spin Switch)) {
         pos($content) = $match_start + length($replacement);
     }
 }
-
 while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $match_start = $-[0];
     my $brace_start = $+[0] - 1;
@@ -101,12 +96,10 @@ while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     substr($content, $match_start, $block_end - $match_start) = $replacement;
     pos($content) = $match_start + length($replacement);
 }
-
 $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
@@ -116,7 +109,6 @@ while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     substr($content, $brace_start + 1, $block_end - $brace_start - 2) = $inner;
     pos($content) = $block_end;
 }
-
 $content =~ s/(Gtk\.Box\s*\{)(?![\s\S]*?orientation: vertical;)/$1 orientation: vertical; /gs;
 $content =~ s/\b(content|child):\s*//g;
 $content =~ s/\[(top|bottom|start|end)\]\s*//g;
@@ -197,15 +189,10 @@ meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# Compile schemas in AppDir
-echo "=== Compiling GSettings schemas ==-"
-glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
-
 # 5. Packaging
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-# Download the GTK plugin and name it correctly for linuxdeploy
-wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
-chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
+wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+chmod +x linuxdeploy appimagetool
 
 export PATH="$PWD:$PATH"
 export VERSION
@@ -214,14 +201,29 @@ export VERSION
 DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
 ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
-# Run linuxdeploy with GTK plugin
-# We use the full name of the plugin script if needed, or rely on PATH.
+# Deploy dependencies
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"} \
-    --plugin gtk \
-    --output appimage
+    ${ICON_FILE:+ -i "$ICON_FILE"}
 
-mv *.AppImage "$REPO_ROOT/" 2>/dev/null || true
+# Manually compile schemas inside AppDir
+echo "=== Compiling GSettings schemas ==-"
+glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
+
+# Create a robust custom AppRun
+cat << 'EOF' > "$APPDIR/AppRun"
+#!/bin/sh
+HERE="$(dirname "$(readlink -f "${0}")")"
+export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
+export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
+export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
+exec "$HERE/usr/bin/gnome-sudoku" "$@"
+EOF
+chmod +x "$APPDIR/AppRun"
+
+# Generate AppImage
+./appimagetool "$APPDIR" Sudoku-49.4-x86_64.AppImage
+
 echo "Done!"
