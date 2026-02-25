@@ -9,7 +9,7 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
-# Install dependencies
+# Install file utility
 if [ "$EUID" -eq 0 ]; then
     apt-get update && apt-get install -y file
 else
@@ -50,7 +50,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala: Surgical replacements
+# Vala fixes
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
@@ -60,30 +60,13 @@ find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.StatusPage/unowne
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/ \/* stub *\/ /g' {} +
 
-# Vala: Method stubbing (Non-mutating search)
+# Vala method stubs (Simple non-recursive Perl)
 cat << 'EOF' > stub_vala.pl
 undef $/;
 my $content = <STDIN>;
-my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
-foreach my $f (@funcs) {
-    # Find match and its block
-    while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
-        my $start = $-[0]; my $brace = $+[0] - 1;
-        my $count = 1; my $pos = $brace + 1;
-        while ($count > 0 && $pos < length($content)) {
-            my $c = substr($content, $pos, 1);
-            if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
-            $pos++;
-        }
-        my $end = $pos;
-        my $replacement = "void $f () { }";
-        # We replace in place but we must be careful with /g.
-        # Safer: just use a temporary marker and replace later or do it once.
-        substr($content, $start, $end - $start) = $replacement . (" " x ($end - $start - length($replacement)));
-    }
-}
-# MessageDialog constructor mapping
+$content =~ s/\bvoid\s+(?:play_hide_animation|skip_animation|visible_dialog_cb|set_accent_color)\s*\([^\)]*\)\s*\{[^\}]*\}/void stub() { }/g;
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageDialog(null, $1, $2)/g;
 print $content;
@@ -97,37 +80,13 @@ find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
 find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/top-bar-style:/d' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/centering-policy:/d' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/^\s*(content|child): //g' {} +
-
-# Semicolon Normalization (Safe approach)
-cat << 'EOF' > fix_blp.pl
-undef $/;
-my $content = <STDIN>;
-# 1. Remove all semicolons after blocks
-$content =~ s/\}\s*;/}/g;
-# 2. Identify property blocks and add semicolons back
-my @props = qw(adjustment popover title-widget menu-model model);
-my $prop_regex = join("|", @props);
-my @inserts;
-while ($content =~ m/\b($prop_regex):\s*[^;\{]+\{/g) {
-    my $brace = $+[0] - 1;
-    my $count = 1; my $pos = $brace + 1;
-    while ($count > 0 && $pos < length($content)) {
-        my $c = substr($content, $pos, 1);
-        if ($c eq '{') { $count++; } elsif ($c eq '}') { $count--; }
-        $pos++;
-    }
-    push @inserts, $pos;
-}
-# Apply inserts in reverse to keep offsets valid
-foreach my $pos (reverse @inserts) {
-    substr($content, $pos, 0) = ";";
-}
-print $content;
-EOF
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" | while read f; do perl fix_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bsubtitle: /label: /g' {} +
+# Remove problematic properties without deleting the line
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget): [^;]*;//g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(content|child): //g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\[(top|bottom|start|end)\]//g' {} +
+# Semicolon fix: just remove them all after braces
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -151,16 +110,14 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force bundling of core libs
-LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
-LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
-LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
+# Force bundling of almost everything to avoid "standard" lib issues
+export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0,libgraphene-1.0,libgio-2.0,libgobject-2.0,libglib-2.0"
+
+DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
+ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    ${LIBADWAITA:+ --library "$LIBADWAITA"} \
-    ${LIBGTK:+ --library "$LIBGTK"} \
-    ${LIBGEE:+ --library "$LIBGEE"} \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
     ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
