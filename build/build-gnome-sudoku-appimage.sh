@@ -9,6 +9,13 @@ APPDIR="AppDir"
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
 
+# Install missing system dependencies for packaging
+if [ "$EUID" -eq 0 ]; then
+    apt-get update && apt-get install -y file
+else
+    sudo apt-get update && sudo apt-get install -y file
+fi
+
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
 mkdir -p "$APPDIR"
 
@@ -36,7 +43,7 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
-# Standalone Blueprint Patcher (Proven high-fidelity)
+# Standalone Blueprint Patcher (High-fidelity parser)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -149,9 +156,7 @@ $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
 
 # 2. Fix property usage for downgraded widgets
-# Stub out .subtitle on windowtitle (now Gtk.Label)
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
-# Fix .title -> .label on windowtitle (now Gtk.Label)
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
 
 if ($file =~ /window.vala/) {
@@ -166,7 +171,6 @@ if ($file =~ /window.vala/) {
 if ($file =~ /gnome-sudoku.vala/ || $file =~ /printer.vala/ || $file =~ /game-view.vala/) {
     $content =~ s/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g;
     my $parent = ($file =~ /gnome-sudoku.vala/) ? "window" : "null";
-    # Match new Adw.MessageDialog ( ... ); and fix arguments.
     $content =~ s{new\s+Adw\.MessageDialog\s*\((.*)\);}{
         my $args = $1;
         if ($args !~ m/,/) { $args .= ", null"; }
@@ -208,8 +212,7 @@ cd "$REPO_ROOT"
 
 # 5. Packaging
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-chmod +x linuxdeploy appimagetool
+chmod +x linuxdeploy
 
 export PATH="$PWD:$PATH"
 export VERSION
