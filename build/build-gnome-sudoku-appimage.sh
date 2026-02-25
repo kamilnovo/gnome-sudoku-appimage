@@ -35,12 +35,9 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Patch Sudoku
 echo "=== Patching Sudoku ==-"
-# Force versions in meson.build
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" "$PROJECT_DIR/meson.build" || true
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" "$PROJECT_DIR/meson.build" || true
-
-# Inject Pango/PangoCairo into Vala args
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
@@ -65,13 +62,13 @@ print $content;
 EOF
 for css in "$PROJECT_DIR"/data/*.css; do perl patch_css.pl < "$css" > "$css.tmp" && mv "$css.tmp" "$css"; done
 
-# High-fidelity Brace-counting Patcher for BLP and Vala
-cat << 'EOF' > patch_blocks.pl
+# Hardened Character-by-Character Patcher for BLP and Vala
+cat << 'EOF' > patch_file.pl
 undef $/;
 my $content = <STDIN>;
-my $mode = $ARGV[0]; # 'blp' or 'vala'
+my $mode = $ARGV[0];
 
-sub find_block_end {
+sub get_block {
     my ($str, $start_pos) = @_;
     my $count = 1;
     my $pos = $start_pos;
@@ -81,36 +78,42 @@ sub find_block_end {
         elsif ($c eq '}') { $count--; }
         $pos++;
     }
-    return $pos;
+    return substr($str, $start_pos, $pos - $start_pos - 1);
 }
 
 if ($mode eq 'blp') {
-    # 1. Downgrade modern widgets
     $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
     $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
     $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
     $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-    
-    # 2. Fix Gtk.Label properties (title -> label)
-    while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
-        my $match_start = $-[0];
-        my $brace_start = $+[0] - 1;
-        my $block_end = find_block_end($content, $brace_start + 1);
-        my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
-        $inner =~ s/\btitle\s*:\s*/label: /g;
-        $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
-        substr($content, $brace_start + 1, $block_end - $brace_start - 2) = $inner;
-        pos($content) = $block_end;
-    }
-    
-    # 3. Strip modern attributes
     $content =~ s/\b(content|child):\s*//g;
     $content =~ s/\[(top|bottom|start|end)\]\s*//g;
     $content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;\s*//g;
+    
+    # Transform Adw.StatusPage to Gtk.Box + Gtk.Label
+    while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
+        my $start = $-[0];
+        my $brace = $+[0];
+        my $inner = get_block($content, $brace);
+        my $title = ($inner =~ s/\btitle:\s*(_\("[^"]+"\));//) ? $1 : "\" \"";
+        my $replacement = "Gtk.Box { orientation: vertical; valign: center; Gtk.Label { label: $title; styles [\"title-1\"] } $inner }";
+        substr($content, $start, length($inner) + ($brace - $start) + 1) = $replacement;
+        pos($content) = $start + length($replacement);
+    }
+    
+    # Fix Label properties
+    while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
+        my $start = $-[0];
+        my $brace = $+[0];
+        my $inner = get_block($content, $brace);
+        $inner =~ s/\btitle\s*:\s*/label: /g;
+        $inner =~ s/\bsub(?:title|label):\s*[^;]+;//g;
+        substr($content, $brace, length($inner)) = $inner;
+        pos($content) = $start + length($inner) + ($brace - $start) + 1;
+    }
 }
 
 if ($mode eq 'vala') {
-    # Global API mapping
     $content =~ s/Adw\.AlertDialog/Adw.MessageDialog/g;
     $content =~ s/\bunowned\s+Adw\.WindowTitle/unowned Gtk.Label/g;
     $content =~ s/\bunowned\s+Adw\.SpinRow/unowned Gtk.SpinButton/g;
@@ -119,17 +122,19 @@ if ($mode eq 'vala') {
     $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
     $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
     $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
+    $content =~ s/accent_provider.load_from_string\s*\(\s*s\s*\)/accent_provider.load_from_data(s.data)/g;
+    $content =~ s/dispose_template\s*\(\s*this.get_type\s*\(\)\s*\);/\/\/dispose/g;
     
-    # Stub out troublesome functions
+    # Stub functions safely
     my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
     foreach my $f (@funcs) {
-        while ($content =~ m/\bvoid\s+$f\s*\([^\)]*\)\s*\{/g) {
-            my $match_start = $-[0];
-            my $brace_start = $+[0] - 1;
-            my $block_end = find_block_end($content, $brace_start + 1);
+        while ($content =~ m/\b(public\s+|private\s+)?void\s+$f\s*\([^\)]*\)\s*\{/g) {
+            my $start = $-[0];
+            my $brace = $+[0];
+            my $inner = get_block($content, $brace);
             my $replacement = "void $f () { }";
-            substr($content, $match_start, $block_end - $match_start) = $replacement;
-            pos($content) = $match_start + length($replacement);
+            substr($content, $start, length($inner) + ($brace - $start) + 1) = $replacement;
+            pos($content) = $start + length($replacement);
         }
     }
     
@@ -147,17 +152,13 @@ EOF
 # Apply patches
 echo "Patching Blueprints..."
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do
-    perl patch_blocks.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    perl patch_file.pl blp < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
 
 echo "Patching Vala..."
 find "$PROJECT_DIR"/src "$PROJECT_DIR"/lib -name "*.vala" -print0 | while IFS= read -r -d $'\0' f; do
-    perl patch_blocks.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    perl patch_file.pl vala < "$f" > "$f.tmp" && mv "$f.tmp" "$f"
 done
-
-# Extra Vala fixes via sed (simpler and safer)
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/\/\/dispose/g' {} +
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -178,8 +179,16 @@ wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/mas
 wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
 chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 
-# Deploy dependencies
+export PATH="$PWD:$PATH"
+export VERSION
+
+# Find desktop and icon
+DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
+ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
+
+# Deploy with GTK plugin and forced bundling
 export DEPLOY_GTK_VERSION=4
+# Force bundling of core libs
 LIBADWAITA=$(find /usr/lib -name "libadwaita-1.so.0" | head -n 1)
 LIBGTK=$(find /usr/lib -name "libgtk-4.so.1" | head -n 1)
 LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
@@ -189,9 +198,14 @@ LIBGEE=$(find /usr/lib -name "libgee-0.8.so.2" | head -n 1)
     ${LIBADWAITA:+ --library "$LIBADWAITA"} \
     ${LIBGTK:+ --library "$LIBGTK"} \
     ${LIBGEE:+ --library "$LIBGEE"} \
+    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
-# Create robust AppRun
+# Compile schemas
+glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
+
+# Overwrite AppRun
 cat << 'EOF' > "$APPDIR/AppRun"
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "${0}")")"
@@ -204,6 +218,6 @@ exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 
-# Build AppImage
+# Generate AppImage
 ./appimagetool "$APPDIR" Sudoku-49.4-x86_64.AppImage
 echo "Done!"
