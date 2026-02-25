@@ -209,42 +209,52 @@ DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
 # 5. Packaging
+echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
-wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
-chmod +x linuxdeploy appimagetool
+wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
+chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh
 
 export PATH="$PWD:$PATH"
 export VERSION
+# Force bundling of almost everything to avoid "standard" lib issues
+export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing"
 
 # Find desktop and icon
 DESKTOP_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.desktop")
 ICON_FILE=$(find "$APPDIR" -name "org.gnome.Sudoku.svg" | grep -v "symbolic" | head -n 1)
 
-# Deploy dependencies
+# Deploy with GTK plugin
+export DEPLOY_GTK_VERSION=4
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
-    ${ICON_FILE:+ -i "$ICON_FILE"}
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
+    --plugin gtk
 
 # Manually compile schemas inside AppDir
 echo "=== Compiling GSettings schemas ==-"
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
-# Create a robust custom AppRun
-cat << 'EOF' > "$APPDIR/AppRun"
+# Fix AppRun - use linuxdeploy's but prepend our env vars if needed
+# Actually, linuxdeploy's AppRun is a symlink to usr/bin/AppRun in some versions
+# or a real file. Let's just create a wrapper in usr/bin and point AppRun to it.
+
+mv "$APPDIR/usr/bin/gnome-sudoku" "$APPDIR/usr/bin/gnome-sudoku.bin"
+cat << 'EOF' > "$APPDIR/usr/bin/gnome-sudoku"
 #!/bin/sh
 HERE="$(dirname "$(readlink -f "${0}")")"
-export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
-export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
-export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
+# $HERE is usr/bin
+ROOT="$HERE/../.."
+export GSETTINGS_SCHEMA_DIR="$ROOT/usr/share/glib-2.0/schemas"
+export XDG_DATA_DIRS="$ROOT/usr/share:$XDG_DATA_DIRS"
 export GTK_THEME=Adwaita
-# Use absolute path relative to mount point
-exec "$HERE/usr/bin/gnome-sudoku" "$@"
+exec "$HERE/gnome-sudoku.bin" "$@"
 EOF
-chmod +x "$APPDIR/AppRun"
+chmod +x "$APPDIR/usr/bin/gnome-sudoku"
 
-# Generate AppImage
-./appimagetool "$APPDIR" Sudoku-49.4-x86_64.AppImage
+# Remove any manual AppRun we created earlier to let linuxdeploy regenerate it correctly
+rm -f "$APPDIR/AppRun"
+./linuxdeploy --appdir "$APPDIR" --output appimage
 
+mv *.AppImage "$REPO_ROOT/Sudoku-49.4-x86_64.AppImage" 2>/dev/null || true
 echo "Done!"
