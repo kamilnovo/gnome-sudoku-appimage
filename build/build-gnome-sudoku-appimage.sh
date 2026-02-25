@@ -40,7 +40,7 @@ for css in "$PROJECT_DIR"/data/*.css; do
     sed -i 's/:root/*/g' "$css"
 done
 
-# Vala fixes (Simple replacements)
+# Vala: Surgical replacements
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
@@ -52,19 +52,7 @@ find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/dispose_template(this.get_type());/ \/* stub *\/ /g' {} +
 
-# Blueprint fixes
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bsubtitle: /label: /g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget): [^;]*;//g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(content|child): //g' {} +
-find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
-
-# Vala method stubbing (Reliable character-based approach)
+# Vala Method Stubbing (Non-recursive search-and-rename)
 cat << 'EOF' > stub_vala.pl
 undef $/;
 my $content = <STDIN>;
@@ -80,11 +68,11 @@ sub find_block_end {
 }
 my @funcs = qw(play_hide_animation skip_animation visible_dialog_cb set_accent_color);
 foreach my $f (@funcs) {
-    while ($content =~ m/\bvoid\s+$f\s*\([^\)]*\)\s*\{/g) {
+    while ($content =~ m/\bvoid\s+$f\s*\([^\)]*\)\s*\{/) {
         my $start = $-[0]; my $brace = $+[0] - 1;
         my $end = find_block_end($content, $brace);
-        my $replacement = "void $f () { }";
-        substr($content, $start, $end - $start) = $replacement . (" " x ($end - $start - length($replacement)));
+        my $replacement = "void stub_$f () { }";
+        substr($content, $start, $end - $start) = $replacement;
     }
 }
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
@@ -92,6 +80,23 @@ $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageD
 print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl stub_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+
+# Blueprint Fixes (Minimalist stable transformations)
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\btitle: /label: /g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\bsubtitle: /label: /g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/top-bar-style:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/centering-policy:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i '/enable-transitions:/d' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\b(content|child): //g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/\[(top|bottom|start|end)\]//g' {} +
+find "$PROJECT_DIR"/src/blueprints -name "*.blp" -exec sed -i 's/}\s*;/}/g' {} +
 
 # C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
@@ -115,12 +120,13 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-
 # Force core libraries into AppImage
 export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0"
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
+    ${DESKTOP_FILE:+ -d "$DESKTOP_FILE"} \
+    ${ICON_FILE:+ -i "$ICON_FILE"} \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
