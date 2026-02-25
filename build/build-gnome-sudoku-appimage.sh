@@ -43,14 +43,23 @@ sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0
 sed -i "s/gnome_sudoku_vala_args = \[/gnome_sudoku_vala_args = ['--pkg=pango', '--pkg=pangocairo', /" "$PROJECT_DIR/src/meson.build"
 sed -i "s/libsudoku = static_library('sudoku', libsudoku_sources,/libsudoku = static_library('sudoku', libsudoku_sources, vala_args: ['--pkg=pango', '--pkg=pangocairo'],/" "$PROJECT_DIR/lib/meson.build"
 
-# Patch CSS for GTK 4.8
-find "$PROJECT_DIR/data" -name "*.css" | while read css; do
+# Robust CSS Patcher (Avoids junk and blue-overload)
+cat << 'EOF' > patch_css.pl
+undef $/;
+my $content = <STDIN>;
+# Replace oklch/oklab with neutral or standard colors
+$content =~ s/oklch\([^)]*\)/#3584e4/g; # Still use blue for variables
+$content =~ s/oklab\([^)]*\)/#3584e4/g;
+# Strip relative color syntax lines entirely to avoid "junk at end of value"
+$content =~ s/^[ \t]*(background|color|transition|animation):[^;]*okl[ch]ab?\(from[^;]*;[ \t]*\n?//mg;
+# Replace :root with *
+$content =~ s/:root/*/g;
+print $content;
+EOF
+
+for css in "$PROJECT_DIR"/data/*.css; do
     echo "Patching CSS: $css"
-    sed -i 's/oklch([^)]*)/#3584e4/g' "$css"
-    sed -i 's/oklab([^)]*)/#3584e4/g' "$css"
-    sed -i 's/background: oklch(from [^;]*;//g' "$css"
-    sed -i 's/color: oklab(from [^;]*;//g' "$css"
-    sed -i 's/:root/*/g' "$css"
+    perl patch_css.pl < "$css" > "$css.tmp" && mv "$css.tmp" "$css"
 done
 
 # Standalone Blueprint Patcher
@@ -69,6 +78,8 @@ sub find_block {
     }
     return $pos;
 }
+# Transform Adw.SpinRow and Adw.SwitchRow to ActionRow + suffix
+# Improved to move properties correctly
 foreach my $type (qw(Spin Switch)) {
     while ($content =~ m/\bAdw\.${type}Row(?:\s+([a-zA-Z0-9_]+))?\s*\{/g) {
         my $match_start = $-[0];
@@ -76,15 +87,19 @@ foreach my $type (qw(Spin Switch)) {
         my $brace_start = $+[0] - 1;
         my $block_end = find_block($content, $brace_start + 1);
         my $inner = substr($content, $brace_start + 1, $block_end - $brace_start - 2);
+        
         my $title = ($inner =~ s/\btitle:\s*([^;]+);//) ? "title: $1;" : "title: \" \";";
         my $use_underline = ($inner =~ s/\buse-underline:\s*([^;]+);//) ? "use-underline: $1;" : "";
         $inner =~ s/\bvalign:\s*[^;]+;//g;
+        
         my $new_widget = ($type eq "Spin") ? "Gtk.SpinButton" : "Gtk.Switch";
+        # We put the ID on the INNER widget so Vala GtkChild works
         my $replacement = "Adw.ActionRow { $title $use_underline [suffix] $new_widget $id { valign: center; $inner } }";
         substr($content, $match_start, $block_end - $match_start) = $replacement;
         pos($content) = $match_start + length($replacement);
     }
 }
+# Adw.StatusPage -> Gtk.Box
 while ($content =~ m/\bAdw\.StatusPage\s*\{/g) {
     my $match_start = $-[0];
     my $brace_start = $+[0] - 1;
@@ -100,6 +115,7 @@ $content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
+# Fix Label properties globally in blocks
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace_start = $+[0] - 1;
     my $block_end = find_block($content, $brace_start + 1);
@@ -143,6 +159,13 @@ $content =~ s/\bunowned\s+Adw\.ToolbarView/unowned Gtk.Box/g;
 $content =~ s/\bunowned\s+Adw\.StatusPage/unowned Gtk.Box/g;
 $content =~ s/windowtitle\.subtitle\s*=\s*.*;/\/\/subtitle stub/g;
 $content =~ s/windowtitle\.title\s*=\s*/windowtitle.label = /g;
+
+# Disable animations in earmark.vala to fix potential crash
+if ($file =~ /earmark.vala/) {
+    $content =~ s/hide_animation\.play\s*\(\s*\);/\/\/animation disabled/g;
+    $content =~ s/hide_animation\.skip\s*\(\s*\);/\/\/animation disabled/g;
+}
+
 if ($file =~ /window.vala/) {
     $content =~ s/notify\s*\[\s*"visible-dialog"\s*\]/\/\/notify/g;
     $content =~ s/private\s+void\s+visible_dialog_cb\s*\(\)\s*\{((?:[^{}]|\{(?1)\})*)\}/private void visible_dialog_cb () { }/g;
@@ -219,6 +242,8 @@ export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
 export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
+# Force a neutral theme or ignore system variables that might break it
+export GTK_THEME=Adwaita
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
