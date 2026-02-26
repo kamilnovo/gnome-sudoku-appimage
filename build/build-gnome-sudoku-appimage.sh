@@ -35,7 +35,7 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" meson.build
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
 
-# B. Rewrite ALL Blueprints manually with STRICT 1.2 syntax
+# B. Rewrite ALL Blueprints manually with STRICT 1.2 syntax and NO template arguments
 cat << EOF > src/blueprints/window.blp
 using Gtk 4.0;
 using Adw 1;
@@ -99,12 +99,16 @@ template \$SudokuPreferencesDialog : Adw.PreferencesWindow {
 }
 EOF
 
+# In start-view, we use separate callbacks for each difficulty to avoid Blueprint arg issues
 cat << EOF > src/blueprints/start-view.blp
 using Gtk 4.0;
 using Adw 1;
 template \$SudokuStartView : Adw.Bin {
   child: Box {
     orientation: vertical;
+    valign: center;
+    halign: center;
+    spacing: 12;
     Adw.HeaderBar {
       title-widget: Gtk.Label { label: _("Sudoku"); };
       [end]
@@ -114,22 +118,10 @@ template \$SudokuStartView : Adw.Bin {
       label: _("Select Difficulty");
       styles ["title-1"]
     }
-    Button {
-      label: _("Easy");
-      clicked => \$start_game_cb(1);
-    }
-    Button {
-      label: _("Medium");
-      clicked => \$start_game_cb(2);
-    }
-    Button {
-      label: _("Hard");
-      clicked => \$start_game_cb(3);
-    }
-    Button {
-      label: _("Very Hard");
-      clicked => \$start_game_cb(4);
-    }
+    Button { label: _("Easy"); clicked => \$start_easy_cb(); }
+    Button { label: _("Medium"); clicked => \$start_medium_cb(); }
+    Button { label: _("Hard"); clicked => \$start_hard_cb(); }
+    Button { label: _("Very Hard"); clicked => \$start_very_hard_cb(); }
   };
 }
 EOF
@@ -171,7 +163,6 @@ EOF
 
 cat << EOF > src/blueprints/menu-button.blp
 using Gtk 4.0;
-using Adw 1;
 template \$SudokuMenuButton : MenuButton {
   primary: true;
   icon-name: "open-menu-symbolic";
@@ -180,11 +171,10 @@ EOF
 
 cat << EOF > src/blueprints/shortcuts-window.blp
 using Gtk 4.0;
-using Adw 1;
-template \$SudokuShortcutsWindow : Adw.Window {
+template \$SudokuShortcutsWindow : Gtk.Window {
   modal: true;
   title: _("Shortcuts");
-  content: Gtk.Label { label: _("Shortcuts not available in this backport"); };
+  child: Gtk.Label { label: _("Shortcuts not available"); };
 }
 EOF
 
@@ -199,7 +189,10 @@ find . -name "*.vala" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
 find . -name "*.vala" -exec sed -i 's/windowtitle.title = /windowtitle.label = /g' {} +
 find . -name "*.vala" -exec sed -i 's/\.present\s*\([^)]+\)/.present()/g' {} +
 
-# D. C++ fixes
+# D. Match Vala callbacks to new Blueprint buttons in start-view.vala
+sed -i 's/public void start_game_cb\s*(int\s*difficulty)/[CCode (instance_pos = -1)]\n    public void start_easy_cb(Button b) { start_game(1); }\n    [CCode (instance_pos = -1)]\n    public void start_medium_cb(Button b) { start_game(2); }\n    [CCode (instance_pos = -1)]\n    public void start_hard_cb(Button b) { start_game(3); }\n    [CCode (instance_pos = -1)]\n    public void start_very_hard_cb(Button b) { start_game(4); }\n    public void start_game_cb(int difficulty)/g' src/start-view.vala
+
+# E. C++ fixes
 sed -i '1i #include <ctime>\n#include <cstdlib>' lib/qqwing-wrapper.cpp
 sed -i 's/srand\s*(.*)/srand(time(NULL))/g' lib/qqwing-wrapper.cpp
 
