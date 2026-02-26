@@ -26,23 +26,43 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Add Subprojects for modern dependencies
-echo "=== Fetching Subprojects from GitLab ==-"
+echo "=== Setting up Subprojects with Wrap files ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
-git clone --depth 1 https://gitlab.gnome.org/GNOME/libadwaita.git subprojects/libadwaita
-git clone --depth 1 https://gitlab.gnome.org/GNOME/gtk.git subprojects/gtk
-git clone --depth 1 https://gitlab.gnome.org/GNOME/glib.git subprojects/glib
-git clone --depth 1 https://github.com/ebassi/graphene.git subprojects/graphene
-git clone --depth 1 https://gitlab.gnome.org/GNOME/pango.git subprojects/pango
-git clone --depth 1 https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
-git clone --depth 1 https://github.com/fribidi/fribidi.git subprojects/fribidi
-git clone --depth 1 https://gitlab.gnome.org/GNOME/json-glib.git subprojects/json-glib
+
+cat << EOF > subprojects/glib.wrap
+[wrap-git]
+url = https://gitlab.gnome.org/GNOME/glib.git
+revision = 2.82.5
+depth = 1
+EOF
+
+cat << EOF > subprojects/gtk4.wrap
+[wrap-git]
+url = https://gitlab.gnome.org/GNOME/gtk.git
+revision = 4.16.12
+depth = 1
+EOF
+
+cat << EOF > subprojects/libadwaita.wrap
+[wrap-git]
+url = https://gitlab.gnome.org/GNOME/libadwaita.git
+revision = 1.6.3
+depth = 1
+EOF
+
+cat << EOF > subprojects/graphene.wrap
+[wrap-git]
+url = https://github.com/ebassi/graphene.git
+revision = 1.10.8
+depth = 1
+EOF
 
 # 4. Build Sudoku
 echo "=== Building Sudoku with Subprojects ==-"
-# Force fallback for ALL critical libraries by their pkg-config names
+# Use --wrap-mode=forcefallback
 meson setup build --prefix=/usr -Dbuildtype=release \
-    --force-fallback-for=glib-2.0,gio-2.0,gobject-2.0,gmodule-2.0,gtk4,libadwaita-1,json-glib-1.0,graphene-1.0,pango,harfbuzz,fribidi \
+    --wrap-mode=forcefallback \
     -Dgtk:media-gstreamer=disabled \
     -Dgtk:vulkan=disabled \
     -Dgtk:build-demos=false \
