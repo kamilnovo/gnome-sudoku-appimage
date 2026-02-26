@@ -11,9 +11,11 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
 mkdir -p "$APPDIR"
 
-# 1. Build blueprint-compiler (v0.16.0)
+# 1. Build blueprint-compiler (v0.16.0) - Use Wget to avoid git auth
 echo "=== Building blueprint-compiler ==-"
-git clone --depth 1 --branch v0.16.0 https://github.com/JamesWestman/blueprint-compiler.git blueprint-compiler
+wget -q "https://github.com/JamesWestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" -O blueprint.tar.gz
+mkdir -p blueprint-compiler
+tar -xf blueprint.tar.gz -C blueprint-compiler --strip-components=1
 cd blueprint-compiler
 meson setup build --prefix=/usr
 DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
@@ -25,7 +27,7 @@ cd "$REPO_ROOT"
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
-# 3. Patching for Debian 12 (v46.0 is MUCH closer)
+# 3. Patching for Debian 12
 cd "$PROJECT_DIR"
 sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.74.0'/g" meson.build
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
