@@ -35,7 +35,7 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" meson.build
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
 
-# B. Rewrite ALL Blueprints manually with STRICT 1.2 syntax and NO template arguments
+# B. Rewrite ALL Blueprints manually with STRICT 1.2 syntax
 cat << EOF > src/blueprints/window.blp
 using Gtk 4.0;
 using Adw 1;
@@ -99,7 +99,6 @@ template \$SudokuPreferencesDialog : Adw.PreferencesWindow {
 }
 EOF
 
-# In start-view, we use separate callbacks for each difficulty to avoid Blueprint arg issues
 cat << EOF > src/blueprints/start-view.blp
 using Gtk 4.0;
 using Adw 1;
@@ -178,7 +177,8 @@ template \$SudokuShortcutsWindow : Gtk.Window {
 }
 EOF
 
-# C. Vala code fixes
+# C. Vala code fixes (Comprehensive)
+find . -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
 find . -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
 find . -name "*.vala" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
 find . -name "*.vala" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
