@@ -13,20 +13,9 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
 mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
-# 1. Build blueprint-compiler (v0.16.0)
-echo "=== Building blueprint-compiler ==-"
-# Blueprint-compiler isn't officially mirrored on GitHub under GNOME, but we can try the author's repo or a cache.
-# If this fails, we will skip it and hope the system one is okay (but it isn't in 22.04).
-# We'll use a reliable mirror if possible.
-git clone --depth 1 --branch v0.16.0 https://github.com/jwestman/blueprint-compiler.git || \
-git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
-
-cd blueprint-compiler
-meson setup build --prefix=/usr
-DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
-export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
-cd "$REPO_ROOT"
+# 1. Install blueprint-compiler (via pip)
+echo "=== Installing blueprint-compiler ==-"
+pip3 install blueprint-compiler
 
 # 2. Build modern GLib
 echo "=== Building GLib 2.82 ==-"
