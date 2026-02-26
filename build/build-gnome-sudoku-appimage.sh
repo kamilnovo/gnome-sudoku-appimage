@@ -15,22 +15,12 @@ mkdir -p "$APPDIR"
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
-# Patch dependencies to match Fedora 41
-echo "=== Patching dependencies in meson.build ==-"
-sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.16.0'/g" "$PROJECT_DIR/meson.build"
-sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.6.0'/g" "$PROJECT_DIR/meson.build"
-sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.82.0'/g" "$PROJECT_DIR/meson.build"
-
-# Patch Blueprints for Libadwaita 1.6 compatibility
-echo "=== Patching Blueprints ==-"
-find "$PROJECT_DIR" -name "*.blp" -exec sed -i '/enable-transitions:/d' {} +
-
-# Minimal fixes (Only C++ and non-UI code)
+# Minimal fixes (Only C++ compatibility for old compilers, though SDK should be fine)
 echo "=== Applying Minimal Code Fixes ==-"
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 sed -i 's/srand\s*(.*)/srand(time(NULL))/g' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
 
-# Build Sudoku (On Fedora 41, this will work with GTK 4.18)
+# Build Sudoku (On GNOME SDK, this will work natively)
 echo "=== Building Sudoku ==-"
 cd "$PROJECT_DIR"
 meson setup build --prefix=/usr -Dbuildtype=release
@@ -50,7 +40,8 @@ export VERSION
 export DEPLOY_GTK_VERSION=4
 export NO_STRIP=1
 
-# Bundle EVERYTHING from the modern Fedora host
+# Bundle EVERYTHING from the GNOME SDK
+# We use /usr/lib64 as it's Fedora-based.
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     --plugin gtk \

@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: fedora:41
+      image: quay.io/gnome/sdk:master
     permissions:
       contents: write
     defaults:
@@ -21,44 +21,16 @@ jobs:
       - name: Install dependencies
         run: |
           dnf install -y \
-            gcc gcc-c++ \
             python3-pip \
-            ninja-build \
-            pkgconfig \
             wget \
             git \
-            vala \
-            libgee-devel \
-            json-glib-devel \
-            qqwing-devel \
-            yelp-tools \
             itstool \
             gettext \
-            libxml2 \
             desktop-file-utils \
-            gobject-introspection-devel \
-            glib2-devel \
-            pango-devel \
-            cairo-devel \
-            gdk-pixbuf2-devel \
-            libepoxy-devel \
-            graphene-devel \
-            wayland-devel \
-            libX11-devel \
-            libxkbcommon-devel \
-            vulkan-loader-devel \
-            libadwaita-devel \
-            gtk4-devel \
-            libffi-devel \
-            zlib-devel \
-            libmount-devel \
-            libselinux-devel \
-            pcre2-devel \
-            python3-devel \
-            dbus-devel \
-            python3-gobject \
             file \
-            blueprint-compiler
+            blueprint-compiler \
+            libgee-devel \
+            qqwing-devel
           pip3 install --break-system-packages --upgrade meson
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
