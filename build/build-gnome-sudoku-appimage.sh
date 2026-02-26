@@ -10,39 +10,42 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" "$LOCAL_PREFIX"
 mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
-# 1. Download and extract binary packages from Ubuntu 24.04 (Noble)
+# 1. Fetch dependencies using apt-get download (stolen from Noble)
 echo "=== Fetching modern binary dependencies (Noble) ==-"
-# We need GLib 2.80+, GTK 4.14+, Libadwaita 1.5+
+echo "deb http://archive.ubuntu.com/ubuntu noble main universe" > /etc/apt/sources.list.d/noble.list
+apt-get update -o Dir::Etc::sourcelist="sources.list.d/noble.list" -o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0"
+
 mkdir -p packages
 cd packages
-# Use Noble (24.04) which has GLib 2.80 and GTK 4.14
-# Or Oracular (24.10) for even newer ones
-BASE_URL="http://archive.ubuntu.com/ubuntu/pool/main"
-UNIVERSE_URL="http://archive.ubuntu.com/ubuntu/pool/universe"
-
-wget -q "$BASE_URL/g/glib2.0/libglib2.0-0t64_2.80.0-6ubuntu3.1_amd64.deb"
-wget -q "$BASE_URL/g/glib2.0/libglib2.0-dev_2.80.0-6ubuntu3.1_amd64.deb"
-wget -q "$BASE_URL/g/gtk+4.0/libgtk-4-1_4.14.2+ds-1ubuntu1_amd64.deb"
-wget -q "$BASE_URL/g/gtk+4.0/libgtk-4-dev_4.14.2+ds-1ubuntu1_amd64.deb"
-wget -q "$BASE_URL/liba/libadwaita-1/libadwaita-1-0_1.5.0-1_amd64.deb"
-wget -q "$BASE_URL/liba/libadwaita-1/libadwaita-1-dev_1.5.0-1_amd64.deb"
-wget -q "$UNIVERSE_URL/b/blueprint-compiler/blueprint-compiler_0.12.0-1_all.deb"
+# Download specifically from Noble
+apt-get download \
+    libglib2.0-0t64 \
+    libglib2.0-dev \
+    libgtk-4-1 \
+    libgtk-4-dev \
+    libadwaita-1-0 \
+    libadwaita-1-dev \
+    blueprint-compiler \
+    libcairo2 \
+    libcairo2-dev \
+    libgraphene-1.0-0 \
+    libgraphene-1.0-dev
 
 for deb in *.deb; do
     dpkg-deb -x "$deb" "$LOCAL_PREFIX"
 done
 cd "$REPO_ROOT"
+rm /etc/apt/sources.list.d/noble.list
 
 # 2. Build Sudoku 49.4 against extracted binaries
 echo "=== Building Sudoku $VERSION ==-"
 export PKG_CONFIG_PATH="$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/usr/share/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu:$LOCAL_PREFIX/usr/lib:$LD_LIBRARY_PATH"
 export PATH="$LOCAL_PREFIX/usr/bin:$PATH"
 export PYTHONPATH="$LOCAL_PREFIX/usr/lib/python3/dist-packages:$PYTHONPATH"
 
 git clone --depth 1 --branch "$VERSION" https://github.com/GNOME/gnome-sudoku.git "gnome-sudoku-$VERSION"
 cd "gnome-sudoku-$VERSION"
-# Fix Sudoku to accept the versions we downloaded
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.80.0'/g" meson.build
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
@@ -60,14 +63,15 @@ export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
 
-# Bundle the extracted libraries
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     --plugin gtk \
     --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libgtk-4.so.1" \
     --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libadwaita-1.so.0" \
     --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
-    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libgio-2.0.so.0"
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libgio-2.0.so.0" \
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libcairo.so.2" \
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libgraphene-1.0.so.0"
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
