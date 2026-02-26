@@ -35,7 +35,7 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" meson.build
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
 
-# B. Rewrite problematic Blueprints manually
+# B. Rewrite problematic Blueprints manually with STRICT syntax
 cat << EOF > src/blueprints/window.blp
 using Gtk 4.0;
 using Adw 1;
@@ -62,10 +62,10 @@ using Gtk 4.0;
 using Adw 1;
 
 template \$SudokuGameView : Adw.Bin {
-  Gtk.Box {
+  child: Box {
     orientation: vertical;
     Adw.HeaderBar {
-      title-widget: Gtk.Label { label: _("Sudoku"); };
+      title-widget: Adw.WindowTitle { title: _("Sudoku"); };
       [start]
       Button {
         icon-name: "go-previous-symbolic";
@@ -74,11 +74,9 @@ template \$SudokuGameView : Adw.Bin {
       [end]
       \$SudokuMenuButton menu_button {}
     }
-    content: Box {
-      orientation: vertical;
+    \$SudokuGrid grid {
       vexpand: true;
       hexpand: true;
-      \$SudokuGrid grid {}
     }
   };
 }
@@ -94,7 +92,10 @@ template \$SudokuPreferencesDialog : Adw.PreferencesWindow {
       title: _("General");
       Adw.ActionRow {
         title: _("Show Timer");
-        [suffix] Gtk.Switch show_timer { valign: center; }
+        [suffix]
+        Switch show_timer {
+          valign: center;
+        }
       }
     }
   }
@@ -106,10 +107,10 @@ using Gtk 4.0;
 using Adw 1;
 
 template \$SudokuStartView : Adw.Bin {
-  Box {
+  child: Box {
     orientation: vertical;
     Adw.HeaderBar {
-      title-widget: Gtk.Label { label: _("Sudoku"); };
+      title-widget: Adw.WindowTitle { title: _("Sudoku"); };
       [end]
       \$SudokuMenuButton menu_button {}
     }
@@ -122,7 +123,7 @@ template \$SudokuStartView : Adw.Bin {
       halign: center;
       clicked => \$start_game_cb();
     }
-  }
+  };
 }
 EOF
 
