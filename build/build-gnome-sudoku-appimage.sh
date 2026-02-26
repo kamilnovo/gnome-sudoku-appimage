@@ -30,60 +30,92 @@ echo "=== Setting up Subprojects with Wrap files ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
 
+# GLib
 cat << EOF > subprojects/glib.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/glib.git
 revision = 2.82.5
 depth = 1
+
+[provide]
+dependency_names = glib-2.0, gobject-2.0, gio-2.0, gmodule-2.0, gio-unix-2.0
 EOF
 
-cat << EOF > subprojects/gtk.wrap
+# GTK4
+cat << EOF > subprojects/gtk4.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/gtk.git
 revision = 4.16.12
 depth = 1
+
+[provide]
+dependency_names = gtk4
 EOF
 
-cat << EOF > subprojects/libadwaita.wrap
+# Libadwaita
+cat << EOF > subprojects/libadwaita-1.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/libadwaita.git
 revision = 1.6.3
 depth = 1
+
+[provide]
+dependency_names = libadwaita-1
 EOF
 
-cat << EOF > subprojects/graphene.wrap
+# Graphene
+cat << EOF > subprojects/graphene-1.0.wrap
 [wrap-git]
 url = https://github.com/ebassi/graphene.git
 revision = 1.10.8
 depth = 1
+
+[provide]
+dependency_names = graphene-1.0, graphene-gobject-1.0
 EOF
 
-cat << EOF > subprojects/json-glib.wrap
+# Json-glib
+cat << EOF > subprojects/json-glib-1.0.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/json-glib.git
 revision = master
 depth = 1
+
+[provide]
+dependency_names = json-glib-1.0
 EOF
 
+# Pango
 cat << EOF > subprojects/pango.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/pango.git
 revision = 1.54.0
 depth = 1
+
+[provide]
+dependency_names = pango, pangocairo, pangoft2, pangowin32
 EOF
 
+# Harfbuzz
 cat << EOF > subprojects/harfbuzz.wrap
 [wrap-git]
 url = https://github.com/harfbuzz/harfbuzz.git
 revision = master
 depth = 1
+
+[provide]
+dependency_names = harfbuzz, harfbuzz-gobject, harfbuzz-subset
 EOF
 
+# Fribidi
 cat << EOF > subprojects/fribidi.wrap
 [wrap-git]
 url = https://github.com/fribidi/fribidi.git
 revision = v1.0.12
 depth = 1
+
+[provide]
+dependency_names = fribidi
 EOF
 
 # 4. Build Sudoku with Subprojects
@@ -99,7 +131,9 @@ meson setup build --prefix=/usr -Dbuildtype=release \
     -Dlibadwaita:tests=false \
     -Dlibadwaita:examples=false \
     -Dlibadwaita:vapi=false \
-    -Dglib:tests=false
+    -Dglib:tests=false \
+    -Djson-glib:tests=false \
+    -Djson-glib:docs=false
     
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
@@ -116,7 +150,6 @@ export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
 
-# Deployment: captured the modern libs we just built
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     --plugin gtk
