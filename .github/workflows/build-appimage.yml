@@ -54,7 +54,7 @@ jobs:
             libffi-dev \
             zlib1g-dev \
             libmount-dev \
-            libselinux-1-dev \
+            libselinux1-dev \
             libpcre2-dev \
             python3-dev \
             libdbus-1-dev \
@@ -63,13 +63,14 @@ jobs:
             mount \
             sassc \
             libfribidi-dev \
-            libfontconfig1-dev \
+            libfontconfig-dev \
             libsqlite3-dev \
             libcups2-dev \
             libcolord-dev \
             liblcms2-dev \
             librest-dev \
-            libsoup-3.0-dev
+            libsoup-3.0-dev \
+            libcloudproviders-dev
           pip3 install --break-system-packages --upgrade meson
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
