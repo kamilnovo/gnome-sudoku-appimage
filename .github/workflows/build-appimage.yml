@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: ubuntu:24.04
+      image: debian:bookworm
     permissions:
       contents: write
     defaults:
@@ -22,11 +22,56 @@ jobs:
         run: |
           apt-get update
           DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            flatpak \
+            build-essential \
+            python3-pip \
+            python3-setuptools \
+            python3-venv \
+            ninja-build \
+            pkg-config \
             wget \
+            git \
+            valac \
+            libgee-0.8-dev \
+            libjson-glib-dev \
+            libqqwing-dev \
+            yelp-tools \
+            itstool \
+            gettext \
+            libxml2-utils \
+            libxml2-dev \
+            desktop-file-utils \
+            libgirepository1.0-dev \
+            libglib2.0-dev \
+            libpango1.0-dev \
+            libcairo2-dev \
+            libgdk-pixbuf-2.0-dev \
+            libepoxy-dev \
+            libgraphene-1.0-dev \
+            libwayland-dev \
+            libx11-dev \
+            libxkbcommon-dev \
+            libvulkan-dev \
+            libffi-dev \
+            zlib1g-dev \
+            libmount-dev \
+            libselinux1-dev \
+            libpcre2-dev \
+            python3-dev \
+            libdbus-1-dev \
+            python3-gi \
             file \
-            tar \
-            xz-utils
+            mount \
+            sassc \
+            libfribidi-dev \
+            libfontconfig-dev \
+            libsqlite3-dev \
+            libcups2-dev \
+            libcolord-dev \
+            liblcms2-dev \
+            librest-dev \
+            libsoup-3.0-dev \
+            libcloudproviders-dev
+          pip3 install --break-system-packages --upgrade meson ninja
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
       - name: Upload AppImage artifact
