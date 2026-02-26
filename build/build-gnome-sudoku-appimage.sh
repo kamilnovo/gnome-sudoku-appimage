@@ -10,23 +10,19 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
 mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
-# Helper function to download and extract tarballs
+# Helper function to download and extract tarballs (Always uses wget to avoid git auth issues)
 download_extract() {
     local url=$1
     local name=$2
     echo "=== Downloading $name ==-"
-    wget -q "$url" -O "$name.tar.xz" || wget "$url" -O "$name.tar.xz"
+    wget -q "$url" -O "$name.tar.gz" || wget "$url" -O "$name.tar.gz"
     mkdir -p "$name"
-    if file "$name.tar.xz" | grep -q "gzip"; then
-        tar -zxf "$name.tar.xz" -C "$name" --strip-components=1
-    else
-        tar -Jxf "$name.tar.xz" -C "$name" --strip-components=1
-    fi
+    tar -xf "$name.tar.gz" -C "$name" --strip-components=1
 }
 
-# 1. Install blueprint-compiler (Authors GitHub)
+# 1. Install blueprint-compiler (via wget to avoid git auth)
 echo "=== Installing blueprint-compiler ==-"
-git clone --depth 1 https://github.com/jwestman/blueprint-compiler.git blueprint-compiler
+download_extract "https://github.com/jwestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" "blueprint-compiler"
 cd blueprint-compiler
 meson setup build --prefix="$LOCAL_PREFIX"
 meson install -C build
@@ -92,7 +88,6 @@ cd "$REPO_ROOT"
 echo "=== Fetching Sudoku source ==-"
 git clone --depth 1 --branch "$VERSION" https://github.com/GNOME/gnome-sudoku.git "gnome-sudoku-$VERSION"
 cd "gnome-sudoku-$VERSION"
-# We relax Sudoku requirements just in case
 sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.72.0'/g" meson.build
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
