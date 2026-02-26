@@ -1,87 +1,48 @@
 #!/bin/bash
 set -e
 export APPIMAGE_EXTRACT_AND_RUN=1
-VERSION="49.4"
-REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
+VERSION="46.0"
+REPO_URL="https://github.com/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
-LOCAL_PREFIX="$PWD/local_prefix"
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
-mkdir -p "$APPDIR" "$LOCAL_PREFIX"
-
-# Robust git clone with retries
-git_retry() {
-    local url=$1
-    local dest=$2
-    local branch=$3
-    echo "=== Cloning $dest ($branch) ==-"
-    for i in {1..5}; do
-        git clone --depth 1 --branch "$branch" "$url" "$dest" && return 0
-        echo "Clone failed, retrying ($i/5)..."
-        sleep 10
-    done
-    return 1
-}
+rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
+mkdir -p "$APPDIR"
 
 # 1. Build blueprint-compiler (v0.16.0)
-git_retry "https://gitlab.gnome.org/jwestman/blueprint-compiler.git" "blueprint-compiler" "v0.16.0"
+echo "=== Building blueprint-compiler ==-"
+git clone --depth 1 --branch v0.16.0 https://github.com/JamesWestman/blueprint-compiler.git blueprint-compiler
 cd blueprint-compiler
-meson setup build --prefix="$LOCAL_PREFIX"
-meson install -C build
-export PATH="$LOCAL_PREFIX/bin:$PATH"
-export PYTHONPATH="$LOCAL_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
+meson setup build --prefix=/usr
+DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
+export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
+export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
 cd "$REPO_ROOT"
 
-# 2. Build modern GLib (Required by GTK 4.16)
-git_retry "https://gitlab.gnome.org/GNOME/glib.git" "glib" "2.82.5"
-cd glib
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dnls=disabled
-meson install -C build
-cd "$REPO_ROOT"
+# 2. Fetch Sudoku source (v46.0)
+echo "=== Fetching gnome-sudoku $VERSION ==-"
+git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
-# 3. Build Graphene
-git_retry "https://github.com/ebassi/graphene.git" "graphene" "1.10.8"
-cd graphene
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dintrospection=disabled
-meson install -C build
-cd "$REPO_ROOT"
-
-# 4. Build GTK 4.16
-git_retry "https://gitlab.gnome.org/GNOME/gtk.git" "gtk" "4.16.12"
-cd gtk
-export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
-meson setup build --prefix="$LOCAL_PREFIX" \
-    -Dmedia-gstreamer=disabled \
-    -Dvulkan=disabled \
-    -Dbuild-demos=false \
-    -Dbuild-tests=false \
-    -Dbuild-examples=false \
-    -Dintrospection=disabled
-meson install -C build
-cd "$REPO_ROOT"
-
-# 5. Build Libadwaita 1.6
-git_retry "https://gitlab.gnome.org/GNOME/libadwaita.git" "libadwaita" "1.6.3"
-cd libadwaita
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dexamples=false -Dvapi=false -Dintrospection=disabled
-meson install -C build
-cd "$REPO_ROOT"
-
-# 6. Build Sudoku 49.4
-git_retry "$REPO_URL" "$PROJECT_DIR" "$VERSION"
+# 3. Patching for Debian 12 (v46.0 is MUCH closer)
 cd "$PROJECT_DIR"
-# Relax Sudoku to use our local build
-sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.72.0'/g" meson.build
+sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.74.0'/g" meson.build
+sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
+sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
+
+# Fix C++ for older compilers
+sed -i '1i #include <ctime>\n#include <cstdlib>' lib/qqwing-wrapper.cpp
+sed -i 's/srand\s*(.*)/srand(time(NULL))/g' lib/qqwing-wrapper.cpp
+
+# 4. Build Sudoku
+echo "=== Building Sudoku ==-"
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 7. Packaging
+# 5. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
@@ -94,13 +55,7 @@ export DEPLOY_GTK_VERSION=4
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    --plugin gtk \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgtk-4.so.1" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libadwaita-1.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgio-2.0.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgobject-2.0.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgraphene-1.0.so.0"
+    --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
@@ -116,5 +71,5 @@ exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 
-./appimagetool "$APPDIR" Sudoku-49.4-x86_64.AppImage
+./appimagetool "$APPDIR" Sudoku-46.0-x86_64.AppImage
 echo "Done!"
