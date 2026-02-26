@@ -54,7 +54,7 @@ jobs:
             libffi-dev \
             zlib1g-dev \
             libmount-dev \
-            libselinux-1-dev \
+            libselinux1-dev \
             libpcre2-dev \
             python3-dev \
             libdbus-1-dev \
