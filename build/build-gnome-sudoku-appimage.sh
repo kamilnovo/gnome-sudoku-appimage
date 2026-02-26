@@ -11,17 +11,13 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
 mkdir -p "$APPDIR"
 
-# 1. Build blueprint-compiler (v0.16.0) - Use Wget to avoid git auth
-echo "=== Building blueprint-compiler ==-"
-wget -q "https://github.com/JamesWestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" -O blueprint.tar.gz
-mkdir -p blueprint-compiler
-tar -xf blueprint.tar.gz -C blueprint-compiler --strip-components=1
-cd blueprint-compiler
-meson setup build --prefix=/usr
-DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
-export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
-cd "$REPO_ROOT"
+# 1. Install blueprint-compiler (via pip git)
+echo "=== Installing blueprint-compiler ==-"
+for i in {1..5}; do
+    pip3 install --break-system-packages git+https://gitlab.gnome.org/jwestman/blueprint-compiler.git && break
+    echo "Pip install failed, retrying ($i/5)..."
+    sleep 10
+done
 
 # 2. Fetch Sudoku source (v46.0)
 echo "=== Fetching gnome-sudoku $VERSION ==-"
