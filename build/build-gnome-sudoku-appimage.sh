@@ -13,12 +13,16 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
 mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
-# 1. Install blueprint-compiler (Try authors repo or skip if failing)
+# 1. Install blueprint-compiler (Try作者repo directly)
 echo "=== Installing blueprint-compiler ==-"
-# Use a known working mirror or the official one if it's back
-pip3 install git+https://github.com/jwestman/blueprint-compiler.git || \
-pip3 install git+https://gitlab.gnome.org/jwestman/blueprint-compiler.git || \
-echo "Blueprint compiler install failed, trying to continue..."
+git clone --depth 1 --branch v0.16.0 https://github.com/jwestman/blueprint-compiler.git || \
+git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+cd blueprint-compiler
+meson setup build --prefix="$LOCAL_PREFIX"
+meson install -C build
+export PATH="$LOCAL_PREFIX/bin:$PATH"
+export PYTHONPATH="$LOCAL_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
+cd "$REPO_ROOT"
 
 # 2. Build modern GLib
 echo "=== Building GLib 2.82 ==-"
@@ -28,7 +32,15 @@ meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dnls=disabled
 meson install -C build
 cd "$REPO_ROOT"
 
-# 3. Build Graphene
+# 3. Build modern Cairo (Required by GTK 4.16)
+echo "=== Building Cairo 1.18 ==-"
+git clone --depth 1 --branch 1.18.2 https://github.com/freedesktop/cairo.git
+cd cairo
+meson setup build --prefix="$LOCAL_PREFIX" -Dtests=disabled -Dglib=enabled
+meson install -C build
+cd "$REPO_ROOT"
+
+# 4. Build Graphene
 echo "=== Building Graphene ==-"
 git clone --depth 1 --branch 1.10.8 https://github.com/ebassi/graphene.git
 cd graphene
@@ -36,7 +48,7 @@ meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dintrospection=disable
 meson install -C build
 cd "$REPO_ROOT"
 
-# 4. Build GTK 4.16
+# 5. Build GTK 4.16
 echo "=== Building GTK 4.16 ==-"
 export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
@@ -53,7 +65,7 @@ meson setup build --prefix="$LOCAL_PREFIX" \
 meson install -C build
 cd "$REPO_ROOT"
 
-# 5. Build Libadwaita 1.6
+# 6. Build Libadwaita 1.6
 echo "=== Building Libadwaita 1.6 ==-"
 git clone --depth 1 --branch 1.6.3 https://github.com/GNOME/libadwaita.git
 cd libadwaita
@@ -65,7 +77,7 @@ meson setup build --prefix="$LOCAL_PREFIX" \
 meson install -C build
 cd "$REPO_ROOT"
 
-# 6. Build Sudoku 49.4
+# 7. Build Sudoku 49.4
 echo "=== Building Sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 cd "$PROJECT_DIR"
@@ -75,7 +87,7 @@ meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 7. Packaging
+# 8. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
@@ -94,6 +106,7 @@ export DEPLOY_GTK_VERSION=4
     --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
     --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgio-2.0.so.0" \
     --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgobject-2.0.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libcairo.so.2" \
     --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgraphene-1.0.so.0"
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
