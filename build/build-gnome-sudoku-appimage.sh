@@ -11,7 +11,7 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
 mkdir -p "$APPDIR"
 
-# 1. Build blueprint-compiler (Modern version needed for Sudoku 49.4)
+# 1. Build blueprint-compiler (v0.16.0)
 echo "=== Building blueprint-compiler ==-"
 git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
 cd blueprint-compiler
@@ -26,16 +26,19 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Add Subprojects for modern dependencies
-# This tells Meson to build GTK 4.16 and Libadwaita 1.6 from source on the Debian 12 host.
+# This builds the LATEST GTK and Libadwaita on our stable Ubuntu 22.04 base.
 echo "=== Setting up Subprojects ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
+# We use the specific versions required by Sudoku 49.4
 meson wrap install libadwaita
 meson wrap install gtk4
+meson wrap install glib
+meson wrap install graphene
 
 # 4. Build Sudoku
 echo "=== Building Sudoku with Subprojects ==-"
-# We force the use of subprojects for the critical libs
+# We force the use of subprojects for everything to ensure they are captured.
 meson setup build --prefix=/usr -Dbuildtype=release \
     --force-fallback-for=libadwaita-1,gtk4,glib-2.0,graphene-1.0
 meson compile -C build -v

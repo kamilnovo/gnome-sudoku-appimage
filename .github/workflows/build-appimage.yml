@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: debian:bookworm
+      image: ubuntu:22.04
     permissions:
       contents: write
     defaults:
@@ -51,12 +51,10 @@ jobs:
             libx11-dev \
             libxkbcommon-dev \
             libvulkan-dev \
-            libadwaita-1-dev \
-            libgtk-4-dev \
             libffi-dev \
             zlib1g-dev \
             libmount-dev \
-            libselinux-1-dev \
+            libselinux1-dev \
             libpcre2-dev \
             python3-dev \
             libdbus-1-dev \
