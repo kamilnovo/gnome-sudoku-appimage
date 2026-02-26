@@ -2,236 +2,86 @@
 set -e
 export APPIMAGE_EXTRACT_AND_RUN=1
 VERSION="49.4"
-REPO_URL="https://github.com/GNOME/gnome-sudoku.git"
+REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
+LOCAL_PREFIX="$PWD/local_prefix"
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
-mkdir -p "$APPDIR"
+rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
+mkdir -p "$APPDIR" "$LOCAL_PREFIX"
+
+# Robust git clone with retries
+git_retry() {
+    local url=$1
+    local dest=$2
+    local branch=$3
+    echo "=== Cloning $dest ($branch) ==-"
+    for i in {1..5}; do
+        git clone --depth 1 --branch "$branch" "$url" "$dest" && return 0
+        echo "Clone failed, retrying ($i/5)..."
+        sleep 10
+    done
+    return 1
+}
 
 # 1. Build blueprint-compiler (v0.16.0)
-echo "=== Building blueprint-compiler ==-"
-# Use author's repo on GitHub to bypass GitLab issues
-git clone --depth 1 --branch v0.16.0 https://github.com/JamesWestman/blueprint-compiler.git || \
-git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+git_retry "https://gitlab.gnome.org/jwestman/blueprint-compiler.git" "blueprint-compiler" "v0.16.0"
 cd blueprint-compiler
-meson setup build --prefix=/usr
-DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
-export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
+meson setup build --prefix="$LOCAL_PREFIX"
+meson install -C build
+export PATH="$LOCAL_PREFIX/bin:$PATH"
+export PYTHONPATH="$LOCAL_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
 cd "$REPO_ROOT"
 
-# 2. Fetch Sudoku source
-echo "=== Fetching gnome-sudoku $VERSION ==-"
-git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
+# 2. Build modern GLib (Required by GTK 4.16)
+git_retry "https://gitlab.gnome.org/GNOME/glib.git" "glib" "2.82.5"
+cd glib
+meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dnls=disabled
+meson install -C build
+cd "$REPO_ROOT"
 
-# 3. God-Mode Surgical Patching for Debian 12 (Libadwaita 1.2 / GTK 4.8)
-echo "=== God-Mode Surgical Patching for Libadwaita 1.2 ==-"
+# 3. Build Graphene
+git_retry "https://github.com/ebassi/graphene.git" "graphene" "1.10.8"
+cd graphene
+meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dintrospection=disabled
+meson install -C build
+cd "$REPO_ROOT"
 
+# 4. Build GTK 4.16
+git_retry "https://gitlab.gnome.org/GNOME/gtk.git" "gtk" "4.16.12"
+cd gtk
+export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
+meson setup build --prefix="$LOCAL_PREFIX" \
+    -Dmedia-gstreamer=disabled \
+    -Dvulkan=disabled \
+    -Dbuild-demos=false \
+    -Dbuild-tests=false \
+    -Dbuild-examples=false \
+    -Dintrospection=disabled
+meson install -C build
+cd "$REPO_ROOT"
+
+# 5. Build Libadwaita 1.6
+git_retry "https://gitlab.gnome.org/GNOME/libadwaita.git" "libadwaita" "1.6.3"
+cd libadwaita
+meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dexamples=false -Dvapi=false -Dintrospection=disabled
+meson install -C build
+cd "$REPO_ROOT"
+
+# 6. Build Sudoku 49.4
+git_retry "$REPO_URL" "$PROJECT_DIR" "$VERSION"
 cd "$PROJECT_DIR"
-
-# A. Force-relax versions in meson.build
-sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" meson.build
-sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
-sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
-
-# B. Rewrite ALL Blueprints manually with STRICT 1.2 syntax
-cat << EOF > src/blueprints/window.blp
-using Gtk 4.0;
-using Adw 1;
-template \$SudokuWindow : Adw.ApplicationWindow {
-  content: Box {
-    orientation: vertical;
-    Adw.ViewStack stack {
-      Adw.ViewStackPage {
-        name: "start-view";
-        child: \$SudokuStartView start_view {};
-      }
-      Adw.ViewStackPage {
-        name: "game-view";
-        child: \$SudokuGameView game_view {};
-      }
-    }
-  };
-}
-EOF
-
-cat << EOF > src/blueprints/game-view.blp
-using Gtk 4.0;
-using Adw 1;
-template \$SudokuGameView : Adw.Bin {
-  child: Box {
-    orientation: vertical;
-    Adw.HeaderBar {
-      title-widget: Gtk.Label { label: _("Sudoku"); };
-      [start]
-      Button {
-        icon-name: "go-previous-symbolic";
-        action-name: "app.back";
-      }
-      [end]
-      \$SudokuMenuButton menu_button {}
-    }
-    \$SudokuGrid grid {
-      vexpand: true;
-      hexpand: true;
-    }
-  };
-}
-EOF
-
-cat << EOF > src/blueprints/preferences-dialog.blp
-using Gtk 4.0;
-using Adw 1;
-template \$SudokuPreferencesDialog : Adw.PreferencesWindow {
-  Adw.PreferencesPage {
-    Adw.PreferencesGroup {
-      title: _("General");
-      Adw.ActionRow {
-        title: _("Show Timer");
-        [suffix]
-        Switch show_timer {
-          valign: center;
-        }
-      }
-    }
-  }
-}
-EOF
-
-cat << EOF > src/blueprints/start-view.blp
-using Gtk 4.0;
-using Adw 1;
-template \$SudokuStartView : Adw.Bin {
-  child: Box {
-    orientation: vertical;
-    valign: center;
-    halign: center;
-    spacing: 12;
-    Adw.HeaderBar {
-      title-widget: Gtk.Label { label: _("Sudoku"); };
-      [end]
-      \$SudokuMenuButton menu_button {}
-    }
-    Gtk.Label {
-      label: _("Select Difficulty");
-      styles ["title-1"]
-    }
-    Button { label: _("Easy"); clicked => \$start_easy_cb(); }
-    Button { label: _("Medium"); clicked => \$start_medium_cb(); }
-    Button { label: _("Hard"); clicked => \$start_hard_cb(); }
-    Button { label: _("Very Hard"); clicked => \$start_very_hard_cb(); }
-  };
-}
-EOF
-
-cat << EOF > src/blueprints/print-dialog.blp
-using Gtk 4.0;
-using Adw 1;
-template \$SudokuPrintDialog : Adw.Window {
-  modal: true;
-  title: _("Print Sudokus");
-  content: Box {
-    orientation: vertical;
-    Adw.HeaderBar {}
-    Adw.PreferencesPage {
-      Adw.PreferencesGroup {
-        Adw.ActionRow {
-          title: _("Number of puzzles");
-          [suffix]
-          SpinButton n_puzzles {
-            adjustment: Adjustment {
-              lower: 1;
-              upper: 100;
-              step-increment: 1;
-            };
-            valign: center;
-          }
-        }
-      }
-    }
-    Button {
-      label: _("_Print");
-      use-underline: true;
-      styles ["suggested-action"]
-      clicked => \$print_cb();
-    }
-  };
-}
-EOF
-
-cat << EOF > src/blueprints/menu-button.blp
-using Gtk 4.0;
-template \$SudokuMenuButton : MenuButton {
-  primary: true;
-  icon-name: "open-menu-symbolic";
-}
-EOF
-
-cat << EOF > src/blueprints/shortcuts-window.blp
-using Gtk 4.0;
-template \$SudokuShortcutsWindow : Gtk.Window {
-  modal: true;
-  title: _("Shortcuts");
-  child: Gtk.Label { label: _("Shortcuts not available"); };
-}
-EOF
-
-# C. Vala code fixes (Final Precision)
-echo "=== Applying Vala Fixes ==-"
-# Fix basic types
-find . -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
-find . -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
-
-# API fixes
-find . -name "*.vala" -exec sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' {} +
-find . -name "*.vala" -exec sed -i 's/style_manager.get_accent_color ()/"#3584e4"/g' {} +
-find . -name "*.vala" -exec sed -i 's/accent_provider.load_from_string/accent_provider.load_from_data/g' {} +
-find . -name "*.vala" -exec sed -i 's/windowtitle.subtitle =/windowtitle.label =/g' {} +
-find . -name "*.vala" -exec sed -i 's/windowtitle.title =/windowtitle.label =/g' {} +
-find . -name "*.vala" -exec sed -i 's/dispose_template (this.get_type ());/unref();/g' {} +
-find . -name "*.vala" -exec sed -i 's/\.present (window)/.present()/g' {} +
-find . -name "*.vala" -exec sed -i 's/Pango.cairo_create_layout/Pango.CairoHelper.create_layout/g' {} +
-find . -name "*.vala" -exec sed -i 's/Pango.cairo_show_layout/Pango.CairoHelper.show_layout/g' {} +
-find . -name "*.vala" -exec sed -i 's/if (visible_dialog != null)/if (false)/g' {} +
-find . -name "*.vala" -exec sed -i 's/new Adw.MessageDialog (win_str, null)/new Adw.MessageDialog(null, "Error", win_str)/g' {} +
-find . -name "*.vala" -exec sed -i 's/new Adw.AboutDialog.from_appdata/new Adw.MessageDialog/g' {} +
-find . -name "*.vala" -exec sed -i 's/n_puzzles.get_adjustment ()/((Gtk.SpinButton)n_puzzles.get_suffix()).get_adjustment()/g' {} + || true
-
-# Difficulty category fixes
-find . -name "*.vala" -exec sed -i 's/case BLUE/case 1/g' {} +
-find . -name "*.vala" -exec sed -i 's/case TEAL/case 2/g' {} +
-find . -name "*.vala" -exec sed -i 's/case GREEN/case 3/g' {} +
-find . -name "*.vala" -exec sed -i 's/case YELLOW/case 4/g' {} +
-find . -name "*.vala" -exec sed -i 's/case ORANGE/case 5/g' {} +
-find . -name "*.vala" -exec sed -i 's/case RED/case 6/g' {} +
-find . -name "*.vala" -exec sed -i 's/case PINK/case 7/g' {} +
-find . -name "*.vala" -exec sed -i 's/case PURPLE/case 8/g' {} +
-find . -name "*.vala" -exec sed -i 's/case SLATE/case 9/g' {} +
-
-# D. Match Vala callbacks
-sed -i 's/public void start_game_cb\s*(int\s*difficulty)/public void start_easy_cb() { start_game(1); }\n    public void start_medium_cb() { start_game(2); }\n    public void start_hard_cb() { start_game(3); }\n    public void start_very_hard_cb() { start_game(4); }\n    public void start_game_cb(int difficulty)/g' src/start-view.vala
-
-# E. C++ fixes
-sed -i '1i #include <ctime>\n#include <cstdlib>' lib/qqwing-wrapper.cpp
-sed -i 's/srand\s*(.*)/srand(time(NULL))/g' lib/qqwing-wrapper.cpp
-
-# 4. Build Sudoku
-echo "=== Building Sudoku ==-"
+# Relax Sudoku to use our local build
+sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.72.0'/g" meson.build
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 5. Packaging
+# 7. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
@@ -244,7 +94,13 @@ export DEPLOY_GTK_VERSION=4
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    --plugin gtk
+    --plugin gtk \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgtk-4.so.1" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libadwaita-1.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgio-2.0.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgobject-2.0.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgraphene-1.0.so.0"
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
