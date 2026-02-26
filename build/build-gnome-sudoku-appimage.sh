@@ -26,42 +26,25 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Add Subprojects for modern dependencies
-echo "=== Setting up Subprojects with Wrap files ==-"
+echo "=== Setting up Subprojects from GitLab ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
 
-# We only build the absolute minimum needed: GTK4 and Libadwaita.
-# We will use the system GLib/Pango to avoid dependency hell.
-# We relax the requirements in Sudoku to allow the system GLib.
-
-sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.72.0'/g" meson.build
-sed -i "s/gio-2.0', version: '>= [0-9.]*'/gio-2.0', version: '>= 2.72.0'/g" meson.build
-
-cat << EOF > subprojects/gtk4.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/gtk.git
-revision = 4.16.12
-depth = 1
-
-[provide]
-dependency_names = gtk4
-EOF
-
-cat << EOF > subprojects/libadwaita-1.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/libadwaita.git
-revision = 1.6.3
-depth = 1
-
-[provide]
-dependency_names = libadwaita-1
-EOF
+# Clone dependencies directly to avoid wrap issues
+git clone --depth 1 --branch 1.6.3 https://gitlab.gnome.org/GNOME/libadwaita.git subprojects/libadwaita
+git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git subprojects/gtk
+git clone --depth 1 --branch 2.82.5 https://gitlab.gnome.org/GNOME/glib.git subprojects/glib
+git clone --depth 1 --branch 1.10.8 https://github.com/ebassi/graphene.git subprojects/graphene
+git clone --depth 1 --branch 1.54.0 https://gitlab.gnome.org/GNOME/pango.git subprojects/pango
+git clone --depth 1 --branch master https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
+git clone --depth 1 --branch v1.0.12 https://github.com/fribidi/fribidi.git subprojects/fribidi
+git clone --depth 1 --branch master https://gitlab.gnome.org/GNOME/json-glib.git subprojects/json-glib
 
 # 4. Build Sudoku
-echo "=== Building Sudoku + Modern UI Stack ==-"
-# We only force fallback for the UI libs.
+echo "=== Building Sudoku + Modern UI Stack (Takes time) ==-"
+# We force fallback for EVERYTHING to ensure it's captured in the AppImage.
 meson setup build --prefix=/usr -Dbuildtype=release \
-    --force-fallback-for=gtk4,libadwaita-1 \
+    --wrap-mode=forcefallback \
     -Dgtk:media-gstreamer=disabled \
     -Dgtk:vulkan=disabled \
     -Dgtk:build-demos=false \
@@ -69,7 +52,9 @@ meson setup build --prefix=/usr -Dbuildtype=release \
     -Dgtk:build-examples=false \
     -Dlibadwaita:tests=false \
     -Dlibadwaita:examples=false \
-    -Dlibadwaita:vapi=false
+    -Dlibadwaita:vapi=false \
+    -Dglib:tests=false \
+    -Dglib:nls=disabled
     
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
