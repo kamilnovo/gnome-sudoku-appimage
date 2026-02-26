@@ -25,6 +25,12 @@ cd "$REPO_ROOT"
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
+# Patch dependencies to match Fedora 41
+echo "=== Patching dependencies in meson.build ==-"
+sed -i "s/gtk4', version: '>= 4.18.0'/gtk4', version: '>= 4.16.0'/g" "$PROJECT_DIR/meson.build"
+sed -i "s/libadwaita-1', version: '>= 1.7.0'/libadwaita-1', version: '>= 1.6.0'/g" "$PROJECT_DIR/meson.build"
+sed -i "s/glib-2.0', version: '>= 2.83.0'/glib-2.0', version: '>= 2.82.0'/g" "$PROJECT_DIR/meson.build"
+
 # Minimal fixes (Only C++ and non-UI code)
 echo "=== Applying Minimal Code Fixes ==-"
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
