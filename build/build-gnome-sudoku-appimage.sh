@@ -121,7 +121,16 @@ while ($content =~ m/\bAdw\.SpinRow\s+([a-zA-Z0-9_]+)\s*\{/g) {
     my $id = $1; my $start = $-[0]; my $brace = $+[0] - 1;
     my $end = find_block_end($content, $brace + 1);
     my $inner = substr($content, $brace + 1, $end - $brace - 2);
-    my $adj = ""; if ($inner =~ s/\badjustment:\s*([^;]+;)/ /gs) { $adj = "adjustment: $1"; }
+    my $adj = "";
+    if ($inner =~ m/\badjustment:\s*([A-Za-z0-9_]+)?\s*\{/g) {
+        my $adj_prop_start = $-[0];
+        my $adj_brace = $+[0] - 1;
+        my $adj_end = find_block_end($inner, $adj_brace + 1);
+        $adj = substr($inner, $adj_prop_start, $adj_end - $adj_prop_start);
+        # Ensure it ends with a semicolon for property placement
+        $adj .= ";" unless $adj =~ /;\s*$/;
+        substr($inner, $adj_prop_start, $adj_end - $adj_prop_start) = "";
+    }
     my $replacement = "Adw.ActionRow {\n$inner\n  [suffix] Gtk.SpinButton $id { valign: center; $adj } \n}";
     substr($content, $start, $end - $start) = $replacement;
     pos($content) = $start + length($replacement);
@@ -132,15 +141,15 @@ while ($content =~ m/\bAdw\.StatusPage(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $start = $-[0]; my $brace = $+[0] - 1;
     my $end = find_block_end($content, $brace + 1);
     my $inner = substr($content, $brace + 1, $end - $brace - 2);
-    my $title = ""; if ($inner =~ s/\btitle:\s*([^;]+;)/ /gs) { $title = "Gtk.Label { label: $1 styles [ \"title-1\" ] }"; }
-    my $desc = ""; if ($inner =~ s/\bdescription:\s*([^;]+;)/ /gs) { $desc = "Gtk.Label { label: $1 }"; }
-    my $replacement = "Gtk.Box { orientation: vertical; $title $desc $inner }";
+    my $title = ""; if ($inner =~ s/^\s*title:\s*([^;]+;)/ /m) { $title = "Gtk.Label { label: $1 styles [ \"title-1\" ] }"; }
+    my $desc = ""; if ($inner =~ s/^\s*description:\s*([^;]+;)/ /m) { $desc = "Gtk.Label { label: $1 }"; }
+    my $replacement = "Gtk.Box {\n orientation: vertical; \n $title \n $desc \n $inner \n}";
     substr($content, $start, $end - $start) = $replacement;
     pos($content) = $start + length($replacement);
 }
 
 # 4. Simple replacements
-$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box { orientation: vertical; /g;
+$content =~ s/\bAdw\.ToolbarView\b\s*\{/Gtk.Box { orientation: vertical; /g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
