@@ -30,18 +30,13 @@ echo "=== Setting up Subprojects with Wrap files ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
 
-# GLib
-cat << EOF > subprojects/glib.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/glib.git
-revision = 2.82.5
-depth = 1
+# We only build the absolute minimum needed: GTK4 and Libadwaita.
+# We will use the system GLib/Pango to avoid dependency hell.
+# We relax the requirements in Sudoku to allow the system GLib.
 
-[provide]
-dependency_names = glib-2.0, gobject-2.0, gio-2.0, gmodule-2.0, gio-unix-2.0
-EOF
+sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.72.0'/g" meson.build
+sed -i "s/gio-2.0', version: '>= [0-9.]*'/gio-2.0', version: '>= 2.72.0'/g" meson.build
 
-# GTK4
 cat << EOF > subprojects/gtk4.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/gtk.git
@@ -52,7 +47,6 @@ depth = 1
 dependency_names = gtk4
 EOF
 
-# Libadwaita
 cat << EOF > subprojects/libadwaita-1.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/libadwaita.git
@@ -63,66 +57,11 @@ depth = 1
 dependency_names = libadwaita-1
 EOF
 
-# Graphene
-cat << EOF > subprojects/graphene-1.0.wrap
-[wrap-git]
-url = https://github.com/ebassi/graphene.git
-revision = 1.10.8
-depth = 1
-
-[provide]
-dependency_names = graphene-1.0, graphene-gobject-1.0
-EOF
-
-# Json-glib
-cat << EOF > subprojects/json-glib-1.0.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/json-glib.git
-revision = master
-depth = 1
-
-[provide]
-dependency_names = json-glib-1.0
-EOF
-
-# Pango
-cat << EOF > subprojects/pango.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/pango.git
-revision = 1.54.0
-depth = 1
-
-[provide]
-dependency_names = pango, pangocairo, pangoft2, pangowin32
-EOF
-
-# Harfbuzz
-cat << EOF > subprojects/harfbuzz.wrap
-[wrap-git]
-url = https://github.com/harfbuzz/harfbuzz.git
-revision = master
-depth = 1
-
-[provide]
-dependency_names = harfbuzz, harfbuzz-gobject, harfbuzz-subset
-EOF
-
-# Fribidi
-cat << EOF > subprojects/fribidi.wrap
-[wrap-git]
-url = https://github.com/fribidi/fribidi.git
-revision = v1.0.12
-depth = 1
-
-[provide]
-dependency_names = fribidi
-EOF
-
-# 4. Build Sudoku with Subprojects
-echo "=== Building Sudoku + Modern Stack (This takes 20-30 mins) ==-"
-# We use --wrap-mode=forcefallback to ensure all dependencies use the subprojects.
+# 4. Build Sudoku
+echo "=== Building Sudoku + Modern UI Stack ==-"
+# We only force fallback for the UI libs.
 meson setup build --prefix=/usr -Dbuildtype=release \
-    --wrap-mode=forcefallback \
+    --force-fallback-for=gtk4,libadwaita-1 \
     -Dgtk:media-gstreamer=disabled \
     -Dgtk:vulkan=disabled \
     -Dgtk:build-demos=false \
@@ -130,10 +69,7 @@ meson setup build --prefix=/usr -Dbuildtype=release \
     -Dgtk:build-examples=false \
     -Dlibadwaita:tests=false \
     -Dlibadwaita:examples=false \
-    -Dlibadwaita:vapi=false \
-    -Dglib:tests=false \
-    -Djson-glib:tests=false \
-    -Djson-glib:docs=false
+    -Dlibadwaita:vapi=false
     
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
