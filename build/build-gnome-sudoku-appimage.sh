@@ -38,13 +38,13 @@ meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dintrospection=disable
 meson install -C build
 cd "$REPO_ROOT"
 
-# 4. Build GTK 4.16 (Surgical Build)
+# 4. Build GTK 4.16
 echo "=== Building GTK 4.16 ==-"
 export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
 git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git
 cd gtk
-# We EXPLICITLY disable everything that causes dependency loops (harfbuzz, freetype, etc. fallbacks)
+# Fix option names for GTK4
 meson setup build --prefix="$LOCAL_PREFIX" \
     --wrap-mode=nodownload \
     -Dmedia-gstreamer=disabled \
@@ -53,8 +53,8 @@ meson setup build --prefix="$LOCAL_PREFIX" \
     -Dbuild-tests=false \
     -Dbuild-examples=false \
     -Dintrospection=disabled \
-    -Dcolord=disabled \
-    -Dcups=disabled \
+    -Dprint-cups=disabled \
+    -Dprint-colord=disabled \
     -Dcloudproviders=disabled
 meson install -C build
 cd "$REPO_ROOT"
@@ -71,11 +71,12 @@ meson setup build --prefix="$LOCAL_PREFIX" \
 meson install -C build
 cd "$REPO_ROOT"
 
-# 6. Build Sudoku 49.4 (Linked against local stack)
+# 6. Build Sudoku 49.4
 echo "=== Building Sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 cd "$PROJECT_DIR"
-# We must patch Sudoku to use our local GLib/GTK/Adwaita via PKG_CONFIG_PATH
+# Relax Sudoku requirements just in case, though we have the local stack
+sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.72.0'/g" meson.build
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
