@@ -48,6 +48,7 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
+export NO_STRIP=1
 
 # Bundle EVERYTHING from the modern Fedora host
 ./linuxdeploy --appdir "$APPDIR" \
