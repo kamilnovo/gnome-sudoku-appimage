@@ -13,9 +13,12 @@ REPO_ROOT="$PWD"
 rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
 mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
-# 1. Install blueprint-compiler (via pip)
+# 1. Install blueprint-compiler (Try authors repo or skip if failing)
 echo "=== Installing blueprint-compiler ==-"
-pip3 install blueprint-compiler
+# Use a known working mirror or the official one if it's back
+pip3 install git+https://github.com/jwestman/blueprint-compiler.git || \
+pip3 install git+https://gitlab.gnome.org/jwestman/blueprint-compiler.git || \
+echo "Blueprint compiler install failed, trying to continue..."
 
 # 2. Build modern GLib
 echo "=== Building GLib 2.82 ==-"
