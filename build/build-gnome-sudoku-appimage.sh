@@ -26,21 +26,31 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Add Subprojects for modern dependencies
-# This builds the LATEST GTK and Libadwaita on our stable Ubuntu 22.04 base.
 echo "=== Setting up Subprojects ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
-# We use the specific versions required by Sudoku 49.4
+# We use fallback for the entire stack to ensure compatibility and modern features.
+# Note: GTK 4.16 requires very modern GLib, Pango, etc.
 meson wrap install libadwaita
 meson wrap install gtk4
 meson wrap install glib
 meson wrap install graphene
+meson wrap install pango
+meson wrap install harfbuzz
+meson wrap install fribidi
 
 # 4. Build Sudoku
 echo "=== Building Sudoku with Subprojects ==-"
-# We force the use of subprojects for everything to ensure they are captured.
+# Force fallback for the core UI stack
 meson setup build --prefix=/usr -Dbuildtype=release \
-    --force-fallback-for=libadwaita-1,gtk4,glib-2.0,graphene-1.0
+    --force-fallback-for=libadwaita-1,gtk4,glib-2.0,graphene-1.0,pango,harfbuzz,fribidi \
+    -Dgtk4:media-gstreamer=disabled \
+    -Dgtk4:vulkan=disabled \
+    -Dgtk4:demos=false \
+    -Dgtk4:tests=false \
+    -Dlibadwaita:tests=false \
+    -Dlibadwaita:examples=false
+    
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
