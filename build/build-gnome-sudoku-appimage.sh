@@ -35,11 +35,10 @@ sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" meson.build
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
 
-# B. Rewrite problematic Blueprints manually with STRICT syntax
+# B. Rewrite ALL Blueprints manually with STRICT 1.2 syntax
 cat << EOF > src/blueprints/window.blp
 using Gtk 4.0;
 using Adw 1;
-
 template \$SudokuWindow : Adw.ApplicationWindow {
   content: Box {
     orientation: vertical;
@@ -60,12 +59,11 @@ EOF
 cat << EOF > src/blueprints/game-view.blp
 using Gtk 4.0;
 using Adw 1;
-
 template \$SudokuGameView : Adw.Bin {
   child: Box {
     orientation: vertical;
     Adw.HeaderBar {
-      title-widget: Adw.WindowTitle { title: _("Sudoku"); };
+      title-widget: Gtk.Label { label: _("Sudoku"); };
       [start]
       Button {
         icon-name: "go-previous-symbolic";
@@ -85,7 +83,6 @@ EOF
 cat << EOF > src/blueprints/preferences-dialog.blp
 using Gtk 4.0;
 using Adw 1;
-
 template \$SudokuPreferencesDialog : Adw.PreferencesWindow {
   Adw.PreferencesPage {
     Adw.PreferencesGroup {
@@ -105,12 +102,11 @@ EOF
 cat << EOF > src/blueprints/start-view.blp
 using Gtk 4.0;
 using Adw 1;
-
 template \$SudokuStartView : Adw.Bin {
   child: Box {
     orientation: vertical;
     Adw.HeaderBar {
-      title-widget: Adw.WindowTitle { title: _("Sudoku"); };
+      title-widget: Gtk.Label { label: _("Sudoku"); };
       [end]
       \$SudokuMenuButton menu_button {}
     }
@@ -119,19 +115,84 @@ template \$SudokuStartView : Adw.Bin {
       styles ["title-1"]
     }
     Button {
-      label: _("Start Game");
-      halign: center;
-      clicked => \$start_game_cb();
+      label: _("Easy");
+      clicked => \$start_game_cb(1);
+    }
+    Button {
+      label: _("Medium");
+      clicked => \$start_game_cb(2);
+    }
+    Button {
+      label: _("Hard");
+      clicked => \$start_game_cb(3);
+    }
+    Button {
+      label: _("Very Hard");
+      clicked => \$start_game_cb(4);
     }
   };
+}
+EOF
+
+cat << EOF > src/blueprints/print-dialog.blp
+using Gtk 4.0;
+using Adw 1;
+template \$SudokuPrintDialog : Adw.Window {
+  modal: true;
+  title: _("Print Sudokus");
+  content: Box {
+    orientation: vertical;
+    Adw.HeaderBar {}
+    Adw.PreferencesPage {
+      Adw.PreferencesGroup {
+        Adw.ActionRow {
+          title: _("Number of puzzles");
+          [suffix]
+          SpinButton n_puzzles {
+            adjustment: Adjustment {
+              lower: 1;
+              upper: 100;
+              step-increment: 1;
+            };
+            valign: center;
+          }
+        }
+      }
+    }
+    Button {
+      label: _("_Print");
+      use-underline: true;
+      styles ["suggested-action"]
+      clicked => \$print_cb();
+    }
+  };
+}
+EOF
+
+cat << EOF > src/blueprints/menu-button.blp
+using Gtk 4.0;
+using Adw 1;
+template \$SudokuMenuButton : MenuButton {
+  primary: true;
+  icon-name: "open-menu-symbolic";
+}
+EOF
+
+cat << EOF > src/blueprints/shortcuts-window.blp
+using Gtk 4.0;
+using Adw 1;
+template \$SudokuShortcutsWindow : Adw.Window {
+  modal: true;
+  title: _("Shortcuts");
+  content: Gtk.Label { label: _("Shortcuts not available in this backport"); };
 }
 EOF
 
 # C. Vala code fixes
 find . -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
 find . -name "*.vala" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.SpinRow\b/Gtk.SpinButton/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.SwitchRow\b/Gtk.Switch/g' {} +
+find . -name "*.vala" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
+find . -name "*.vala" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
 find . -name "*.vala" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
 find . -name "*.vala" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
 find . -name "*.vala" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
