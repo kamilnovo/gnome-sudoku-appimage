@@ -7,101 +7,49 @@ LOCAL_PREFIX="$PWD/local_prefix"
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
+rm -rf "$APPDIR" "$PROJECT_DIR" "$LOCAL_PREFIX"
 mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
-# Improved download with retries and mirror support
-download_retry() {
-    local url=$1
-    local name=$2
-    echo "=== Downloading $name ==-"
-    for i in {1..5}; do
-        wget -t 5 -T 30 -q "$url" -O "$name.tar.xz" && return 0
-        echo "Download failed, retrying ($i/5)..."
-        sleep 5
-    done
-    return 1
-}
+# 1. Download and extract binary packages from Ubuntu 24.04 (Noble)
+echo "=== Fetching modern binary dependencies (Noble) ==-"
+# We need GLib 2.80+, GTK 4.14+, Libadwaita 1.5+
+mkdir -p packages
+cd packages
+# Use Noble (24.04) which has GLib 2.80 and GTK 4.14
+# Or Oracular (24.10) for even newer ones
+BASE_URL="http://archive.ubuntu.com/ubuntu/pool/main"
+UNIVERSE_URL="http://archive.ubuntu.com/ubuntu/pool/universe"
 
-# 1. Install blueprint-compiler (Authors GitHub Zip)
-echo "=== Installing blueprint-compiler ==-"
-# Use correct JamesWestman handle
-wget -q "https://github.com/JamesWestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" -O blueprint.tar.gz || \
-wget -q "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz" -O blueprint.tar.gz
+wget -q "$BASE_URL/g/glib2.0/libglib2.0-0t64_2.80.0-6ubuntu3.1_amd64.deb"
+wget -q "$BASE_URL/g/glib2.0/libglib2.0-dev_2.80.0-6ubuntu3.1_amd64.deb"
+wget -q "$BASE_URL/g/gtk+4.0/libgtk-4-1_4.14.2+ds-1ubuntu1_amd64.deb"
+wget -q "$BASE_URL/g/gtk+4.0/libgtk-4-dev_4.14.2+ds-1ubuntu1_amd64.deb"
+wget -q "$BASE_URL/liba/libadwaita-1/libadwaita-1-0_1.5.0-1_amd64.deb"
+wget -q "$BASE_URL/liba/libadwaita-1/libadwaita-1-dev_1.5.0-1_amd64.deb"
+wget -q "$UNIVERSE_URL/b/blueprint-compiler/blueprint-compiler_0.12.0-1_all.deb"
 
-mkdir -p blueprint-compiler
-tar -xf blueprint.tar.gz -C blueprint-compiler --strip-components=1
-cd blueprint-compiler
-meson setup build --prefix="$LOCAL_PREFIX"
-meson install -C build
-export PATH="$LOCAL_PREFIX/bin:$PATH"
-export PYTHONPATH="$LOCAL_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
+for deb in *.deb; do
+    dpkg-deb -x "$deb" "$LOCAL_PREFIX"
+done
 cd "$REPO_ROOT"
 
-# 2. Build modern GLib
-download_retry "https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz" "glib"
-mkdir -p glib_src
-tar -xf glib.tar.xz -C glib_src --strip-components=1
-cd glib_src
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dnls=disabled
-meson install -C build
-cd "$REPO_ROOT"
+# 2. Build Sudoku 49.4 against extracted binaries
+echo "=== Building Sudoku $VERSION ==-"
+export PKG_CONFIG_PATH="$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/usr/share/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export PATH="$LOCAL_PREFIX/usr/bin:$PATH"
+export PYTHONPATH="$LOCAL_PREFIX/usr/lib/python3/dist-packages:$PYTHONPATH"
 
-# 3. Build Cairo 1.18
-download_retry "https://cairographics.org/releases/cairo-1.18.2.tar.xz" "cairo"
-mkdir -p cairo_src
-tar -xf cairo.tar.xz -C cairo_src --strip-components=1
-cd cairo_src
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=disabled -Dglib=enabled
-meson install -C build
-cd "$REPO_ROOT"
-
-# 4. Build GTK 4.16
-download_retry "https://download.gnome.org/sources/gtk/4.16/gtk-4.16.12.tar.xz" "gtk"
-mkdir -p gtk_src
-tar -xf gtk.tar.xz -C gtk_src --strip-components=1
-cd gtk_src
-export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
-# Build Graphene first (It's a dependency of GTK)
-cd "$REPO_ROOT"
-wget -q "https://github.com/ebassi/graphene/archive/refs/tags/1.10.8.tar.gz" -O graphene.tar.gz
-mkdir -p graphene_src
-tar -xf graphene.tar.gz -C graphene_src --strip-components=1
-cd graphene_src
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dintrospection=disabled
-meson install -C build
-cd "$REPO_ROOT/gtk_src"
-meson setup build --prefix="$LOCAL_PREFIX" \
-    -Dmedia-gstreamer=disabled \
-    -Dvulkan=disabled \
-    -Dbuild-demos=false \
-    -Dbuild-tests=false \
-    -Dbuild-examples=false \
-    -Dintrospection=disabled
-meson install -C build
-cd "$REPO_ROOT"
-
-# 5. Build Libadwaita 1.6
-download_retry "https://download.gnome.org/sources/libadwaita/1.6/libadwaita-1.6.3.tar.xz" "libadwaita"
-mkdir -p libadwaita_src
-tar -xf libadwaita.tar.xz -C libadwaita_src --strip-components=1
-cd libadwaita_src
-meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dexamples=false -Dvapi=false -Dintrospection=disabled
-meson install -C build
-cd "$REPO_ROOT"
-
-# 6. Build Sudoku 49.4
-echo "=== Fetching Sudoku source ==-"
 git clone --depth 1 --branch "$VERSION" https://github.com/GNOME/gnome-sudoku.git "gnome-sudoku-$VERSION"
 cd "gnome-sudoku-$VERSION"
-sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.72.0'/g" meson.build
+# Fix Sudoku to accept the versions we downloaded
+sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.80.0'/g" meson.build
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 7. Packaging
+# 3. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
@@ -112,16 +60,14 @@ export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
 
+# Bundle the extracted libraries
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
     --plugin gtk \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgtk-4.so.1" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libadwaita-1.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgio-2.0.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgobject-2.0.so.0" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libcairo.so.2" \
-    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgraphene-1.0.so.0"
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libgtk-4.so.1" \
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libadwaita-1.so.0" \
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
+    --library "$LOCAL_PREFIX/usr/lib/x86_64-linux-gnu/libgio-2.0.so.0"
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
