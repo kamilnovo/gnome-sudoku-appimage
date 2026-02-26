@@ -26,30 +26,30 @@ echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
 # 3. Add Subprojects for modern dependencies
-echo "=== Setting up Subprojects ==-"
+echo "=== Fetching Subprojects from GitLab ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
-# We use fallback for the entire stack to ensure compatibility and modern features.
-# Note: GTK 4.16 requires very modern GLib, Pango, etc.
-meson wrap install libadwaita
-meson wrap install gtk4
-meson wrap install glib
-meson wrap install graphene
-meson wrap install pango
-meson wrap install harfbuzz
-meson wrap install fribidi
+git clone --depth 1 --branch 1.6.3 https://gitlab.gnome.org/GNOME/libadwaita.git subprojects/libadwaita
+git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git subprojects/gtk
+git clone --depth 1 --branch 2.82.5 https://gitlab.gnome.org/GNOME/glib.git subprojects/glib
+git clone --depth 1 --branch 1.10.8 https://github.com/ebassi/graphene.git subprojects/graphene
+git clone --depth 1 --branch 1.54.0 https://gitlab.gnome.org/GNOME/pango.git subprojects/pango
+git clone --depth 1 --branch 1.18.0 https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
+git clone --depth 1 --branch v1.0.12 https://github.com/fribidi/fribidi.git subprojects/fribidi
 
 # 4. Build Sudoku
 echo "=== Building Sudoku with Subprojects ==-"
-# Force fallback for the core UI stack
+# We use the subproject names as defined in their meson.build (usually lowercase)
 meson setup build --prefix=/usr -Dbuildtype=release \
     --force-fallback-for=libadwaita-1,gtk4,glib-2.0,graphene-1.0,pango,harfbuzz,fribidi \
-    -Dgtk4:media-gstreamer=disabled \
-    -Dgtk4:vulkan=disabled \
-    -Dgtk4:demos=false \
-    -Dgtk4:tests=false \
+    -Dgtk:media-gstreamer=disabled \
+    -Dgtk:vulkan=disabled \
+    -Dgtk:build-demos=false \
+    -Dgtk:build-tests=false \
+    -Dgtk:build-examples=false \
     -Dlibadwaita:tests=false \
-    -Dlibadwaita:examples=false
+    -Dlibadwaita:examples=false \
+    -Dlibadwaita:vapi=false
     
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
