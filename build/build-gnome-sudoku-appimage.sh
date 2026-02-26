@@ -30,19 +30,23 @@ echo "=== Fetching Subprojects from GitLab ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
 
-# Use specific tags for stability
+# Use specific tags or main branches
 git clone --depth 1 --branch 1.6.3 https://gitlab.gnome.org/GNOME/libadwaita.git subprojects/libadwaita
 git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git subprojects/gtk
 git clone --depth 1 --branch 2.82.5 https://gitlab.gnome.org/GNOME/glib.git subprojects/glib
 git clone --depth 1 --branch 1.10.8 https://github.com/ebassi/graphene.git subprojects/graphene
 git clone --depth 1 --branch 1.54.0 https://gitlab.gnome.org/GNOME/pango.git subprojects/pango
-git clone --depth 1 --branch 10.1.0 https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
+git clone --depth 1 --branch main https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
 git clone --depth 1 --branch v1.0.12 https://github.com/fribidi/fribidi.git subprojects/fribidi
-git clone --depth 1 --branch 1.10.6 https://gitlab.gnome.org/GNOME/json-glib.git subprojects/json-glib
+git clone --depth 1 --branch main https://gitlab.gnome.org/GNOME/json-glib.git subprojects/json-glib
 
-# 4. Build Sudoku
+# 4. Patch Sudoku to REMOVE version requirements (forces fallback to subprojects)
+echo "=== Patching meson.build to force subproject usage ==-"
+sed -i "s/dependency('\([^']*\)', version: '>= [^']*')/dependency('\1')/g" meson.build
+sed -i "s/dependency('\([^']*\)', version: '>= @0@'.format(glib_version))/dependency('\1')/g" meson.build
+
+# 5. Build Sudoku
 echo "=== Building Sudoku + Modern UI Stack (Takes time) ==-"
-# We force fallback for EVERYTHING to ensure it's captured in the AppImage.
 meson setup build --prefix=/usr -Dbuildtype=release \
     --wrap-mode=forcefallback \
     -Dgtk:media-gstreamer=disabled \
@@ -60,7 +64,7 @@ meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 5. Packaging
+# 6. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
