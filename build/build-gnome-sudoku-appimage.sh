@@ -29,17 +29,16 @@ git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 echo "=== Fetching Subprojects from GitLab ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
-git clone --depth 1 --branch 1.6.3 https://gitlab.gnome.org/GNOME/libadwaita.git subprojects/libadwaita
-git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git subprojects/gtk
-git clone --depth 1 --branch 2.82.5 https://gitlab.gnome.org/GNOME/glib.git subprojects/glib
-git clone --depth 1 --branch 1.10.8 https://github.com/ebassi/graphene.git subprojects/graphene
-git clone --depth 1 --branch 1.54.0 https://gitlab.gnome.org/GNOME/pango.git subprojects/pango
-git clone --depth 1 --branch 1.18.0 https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
-git clone --depth 1 --branch v1.0.12 https://github.com/fribidi/fribidi.git subprojects/fribidi
+git clone --depth 1 https://gitlab.gnome.org/GNOME/libadwaita.git subprojects/libadwaita
+git clone --depth 1 https://gitlab.gnome.org/GNOME/gtk.git subprojects/gtk
+git clone --depth 1 https://gitlab.gnome.org/GNOME/glib.git subprojects/glib
+git clone --depth 1 https://github.com/ebassi/graphene.git subprojects/graphene
+git clone --depth 1 https://gitlab.gnome.org/GNOME/pango.git subprojects/pango
+git clone --depth 1 https://github.com/harfbuzz/harfbuzz.git subprojects/harfbuzz
+git clone --depth 1 https://github.com/fribidi/fribidi.git subprojects/fribidi
 
 # 4. Build Sudoku
 echo "=== Building Sudoku with Subprojects ==-"
-# We use the subproject names as defined in their meson.build (usually lowercase)
 meson setup build --prefix=/usr -Dbuildtype=release \
     --force-fallback-for=libadwaita-1,gtk4,glib-2.0,graphene-1.0,pango,harfbuzz,fribidi \
     -Dgtk:media-gstreamer=disabled \
