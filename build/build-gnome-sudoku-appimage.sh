@@ -52,13 +52,13 @@ done
 
 # Vala fixes (Reliable sed)
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.AlertDialog/Adw.MessageDialog/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.WindowTitle/unowned Gtk.Label/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SpinRow/unowned Gtk.SpinButton/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.SwitchRow/unowned Gtk.Switch/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.ToolbarView/unowned Gtk.Box/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/unowned Adw.StatusPage/unowned Gtk.Box/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.PreferencesDialog/Adw.PreferencesWindow/g' {} +
-find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/Adw.Dialog/Adw.Window/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.WindowTitle\b/Gtk.Label/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.SpinRow\b/Gtk.SpinButton/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.SwitchRow\b/Gtk.Switch/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.ToolbarView\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.StatusPage\b/Gtk.Box/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.PreferencesDialog\b/Adw.PreferencesWindow/g' {} +
+find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/\bAdw.Dialog\b/Adw.Window/g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/windowtitle.title = /windowtitle.label = /g' {} +
 find "$PROJECT_DIR" -name "*.vala" -exec sed -i 's/accent_provider.load_from_string(s)/accent_provider.load_from_data(s.data)/g' {} +
 
@@ -86,11 +86,12 @@ foreach my $f (@funcs) {
 }
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+)\)/new Adw.MessageDialog(null, $1, null)/g;
 $content =~ s/new\s+Adw\.MessageDialog\s*\(([^,]+),\s*([^,]+)\)/new Adw.MessageDialog(null, $1, $2)/g;
+$content =~ s/\.present\s*\([^)]+\)/.present()/g;
 print $content;
 EOF
 find "$PROJECT_DIR" -name "*.vala" | while read f; do perl stub_vala.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 
-# Blueprint Fixes (Context-aware rewriter)
+# Blueprint Fixes (Sophisticated Downgrader)
 cat << 'EOF' > patch_blp.pl
 undef $/;
 my $content = <STDIN>;
@@ -104,41 +105,67 @@ sub find_block_end {
     }
     return $pos;
 }
-# Type downgrades
-$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box/g;
+
+# 1. Downgrade SwitchRow to ActionRow + Gtk.Switch
+while ($content =~ m/\bAdw\.SwitchRow\s+([a-zA-Z0-9_]+)\s*\{/g) {
+    my $id = $1; my $start = $-[0]; my $brace = $+[0] - 1;
+    my $end = find_block_end($content, $brace + 1);
+    my $inner = substr($content, $brace + 1, $end - $brace - 2);
+    my $replacement = "Adw.ActionRow {\n$inner\n  [suffix] Gtk.Switch $id { valign: center; } \n}";
+    substr($content, $start, $end - $start) = $replacement;
+    pos($content) = $start + length($replacement);
+}
+
+# 2. Downgrade SpinRow to ActionRow + Gtk.SpinButton
+while ($content =~ m/\bAdw\.SpinRow\s+([a-zA-Z0-9_]+)\s*\{/g) {
+    my $id = $1; my $start = $-[0]; my $brace = $+[0] - 1;
+    my $end = find_block_end($content, $brace + 1);
+    my $inner = substr($content, $brace + 1, $end - $brace - 2);
+    my $adj = ""; if ($inner =~ s/\badjustment:\s*([^;]+;)/ /gs) { $adj = "adjustment: $1"; }
+    my $replacement = "Adw.ActionRow {\n$inner\n  [suffix] Gtk.SpinButton $id { valign: center; $adj } \n}";
+    substr($content, $start, $end - $start) = $replacement;
+    pos($content) = $start + length($replacement);
+}
+
+# 3. Downgrade StatusPage
+while ($content =~ m/\bAdw\.StatusPage(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
+    my $start = $-[0]; my $brace = $+[0] - 1;
+    my $end = find_block_end($content, $brace + 1);
+    my $inner = substr($content, $brace + 1, $end - $brace - 2);
+    my $title = ""; if ($inner =~ s/\btitle:\s*([^;]+;)/ /gs) { $title = "Gtk.Label { label: $1 styles [ \"title-1\" ] }"; }
+    my $desc = ""; if ($inner =~ s/\bdescription:\s*([^;]+;)/ /gs) { $desc = "Gtk.Label { label: $1 }"; }
+    my $replacement = "Gtk.Box { orientation: vertical; $title $desc $inner }";
+    substr($content, $start, $end - $start) = $replacement;
+    pos($content) = $start + length($replacement);
+}
+
+# 4. Simple replacements
+$content =~ s/\bAdw\.ToolbarView\b/Gtk.Box { orientation: vertical; /g;
 $content =~ s/\bAdw\.WindowTitle\b/Gtk.Label/g;
 $content =~ s/\bAdw\.Dialog\b/Adw.Window/g;
 $content =~ s/\bAdw\.PreferencesDialog\b/Adw.PreferencesWindow/g;
-$content =~ s/\bAdw\.StatusPage\b/Gtk.Box/g;
-$content =~ s/\bAdw\.SpinRow\b/Adw.ActionRow/g;
-$content =~ s/\bAdw\.SwitchRow\b/Adw.ActionRow/g;
-# Property strips
-$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
+
+# 5. Property and Slot cleanup
 $content =~ s/\[(top|bottom|start|end)\]//g;
-# Handle content: and child: (transform to direct children)
-while ($content =~ m/\b(content|child):\s*/) {
-    my $start = $-[0]; my $len = $+[0] - $-[0];
-    substr($content, $start, $len) = " ";
-    # The trailing semicolon will be handled by global cleanup
-}
-# Fix Label property names
+$content =~ s/\b(top-bar-style|centering-policy|enable-transitions|content-width|content-height|default-widget|focus-widget):\s*[^;]+;//g;
+$content =~ s/\b(content|child):\s*//g;
+
+# 6. Title to Label for Gtk.Label
 while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
     my $brace = $+[0] - 1; my $end = find_block_end($content, $brace + 1);
     my $inner = substr($content, $brace, $end - $brace);
-    $inner =~ s/\btitle:\s*/label: /g;
-    $inner =~ s/\bsubtitle:\s*[^;]+;//g;
+    $inner =~ s/\btitle:\s*/label: /g; $inner =~ s/\bsubtitle:\s*[^;]+;//g;
     substr($content, $brace, $end - $brace) = $inner;
     pos($content) = $end;
 }
-# Semicolon Normalization: Remove all, then restore for props
+
+# 7. Semicolon Normalization (Picky compiler)
+# First remove all trailing semicolons after blocks
 $content =~ s/\}\s*;/}/g;
-my @props = qw(adjustment popover title-widget menu-model model);
-my $p_regex = join("|", @props);
-while ($content =~ m/\b($p_regex):\s*[^;\{]+\{/g) {
-    my $end = find_block_end($content, $+[0]);
-    substr($content, $end, 0) = ";";
-    pos($content) = $end + 1;
-}
+# Ensure properties have semicolons, but NOT child widgets
+# This is tricky. We'll look for key: value without a trailing semicolon.
+$content =~ s/([a-z0-9-]+\s*:\s*[^;\{\}\n]+)(?<!;)(?=\n)/$1;/g;
+
 print $content;
 EOF
 for f in "$PROJECT_DIR"/src/blueprints/*.blp; do perl patch_blp.pl < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
@@ -165,11 +192,17 @@ chmod +x linuxdeploy linuxdeploy-plugin-gtk.sh appimagetool
 export PATH="$PWD:$PATH"
 export VERSION
 export DEPLOY_GTK_VERSION=4
-# Force bundling of core libs
-export EXTRA_PLATFORM_LIBRARIES="libadwaita-1,libgtk-4,libgee-0.8,libjson-glib-1.0,libqqwing,libpango-1.0,libcairo,libgdk_pixbuf-2.0"
 
+# Explicitly list libraries to bundle to ensure we hit 30MB+ size
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
+    --library /usr/lib/x86_64-linux-gnu/libadwaita-1.so.0 \
+    --library /usr/lib/x86_64-linux-gnu/libgtk-4.so.1 \
+    --library /usr/lib/x86_64-linux-gnu/libgee-0.8.so.2 \
+    --library /usr/lib/x86_64-linux-gnu/libjson-glib-1.0.so.0 \
+    --library /usr/lib/x86_64-linux-gnu/libpango-1.0.so.0 \
+    --library /usr/lib/x86_64-linux-gnu/libpangocairo-1.0.so.0 \
+    --library /usr/lib/x86_64-linux-gnu/libgirepository-1.0.so.1 \
     --plugin gtk
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
@@ -179,8 +212,8 @@ cat << 'EOF' > "$APPDIR/AppRun"
 HERE="$(dirname "$(readlink -f "${0}")")"
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
-export LD_LIBRARY_PATH="$HERE/usr/lib:$LD_LIBRARY_PATH"
-export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$GI_TYPELIB_PATH"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export GI_TYPELIB_PATH="$HERE/usr/lib/girepository-1.0:$HERE/usr/lib/x86_64-linux-gnu/girepository-1.0:$GI_TYPELIB_PATH"
 export GTK_THEME=Adwaita
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
