@@ -15,16 +15,28 @@ download_extract() {
     local url=$1
     local name=$2
     echo "=== Downloading $name ==-"
-    wget -q "$url" -O "$name.tar.xz"
+    wget -q "$url" -O "$name.tar.xz" || wget "$url" -O "$name.tar.xz"
     mkdir -p "$name"
-    tar -xf "$name.tar.xz" -C "$name" --strip-components=1
+    # Try to detect if it's gzip or xz
+    if file "$name.tar.xz" | grep -q "gzip"; then
+        tar -zxf "$name.tar.xz" -C "$name" --strip-components=1
+    else
+        tar -Jxf "$name.tar.xz" -C "$name" --strip-components=1
+    fi
 }
 
-# 1. Install blueprint-compiler (via pip from author's repo)
+# 1. Install blueprint-compiler (via author's GitHub, using a different method to avoid auth prompt)
 echo "=== Installing blueprint-compiler ==-"
-# Use author's repo directly if GitLab is down
-pip3 install git+https://github.com/jwestman/blueprint-compiler.git || \
-pip3 install blueprint-compiler || echo "Failed to install blueprint-compiler"
+# Sometimes GitHub requires .git suffix or different protocol
+git clone --depth 1 https://github.com/jwestman/blueprint-compiler blueprint-compiler || \
+git clone --depth 1 https://gitlab.gnome.org/jwestman/blueprint-compiler.git blueprint-compiler
+
+cd blueprint-compiler
+meson setup build --prefix="$LOCAL_PREFIX"
+meson install -C build
+export PATH="$LOCAL_PREFIX/bin:$PATH"
+export PYTHONPATH="$LOCAL_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
+cd "$REPO_ROOT"
 
 # 2. Build GLib 2.82
 download_extract "https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz" "glib"
@@ -33,8 +45,8 @@ meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dnls=disabled
 meson install -C build
 cd "$REPO_ROOT"
 
-# 3. Build Cairo 1.18
-download_extract "https://gitlab.freedesktop.org/cairo/cairo/-/archive/1.18.2/cairo-1.18.2.tar.xz" "cairo"
+# 3. Build Cairo 1.18 (Use official cairographics.org mirror)
+download_extract "https://cairographics.org/releases/cairo-1.18.2.tar.xz" "cairo"
 cd cairo
 meson setup build --prefix="$LOCAL_PREFIX" -Dtests=disabled -Dglib=enabled
 meson install -C build
