@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 export APPIMAGE_EXTRACT_AND_RUN=1
-VERSION="46.0"
+VERSION="44.0"
 REPO_URL="https://github.com/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
@@ -13,7 +13,10 @@ mkdir -p "$APPDIR"
 
 # 1. Build blueprint-compiler (v0.16.0)
 echo "=== Building blueprint-compiler ==-"
+# Use Flathub's mirror of the tarball
+wget -q "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz" -O blueprint.tar.gz || \
 wget -q "https://github.com/JamesWestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" -O blueprint.tar.gz
+
 mkdir -p blueprint-compiler
 tar -xf blueprint.tar.gz -C blueprint-compiler --strip-components=1
 cd blueprint-compiler
@@ -23,39 +26,19 @@ export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
 export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
 cd "$REPO_ROOT"
 
-# 2. Fetch Sudoku source (v46.0)
+# 2. Fetch Sudoku source (v44.0)
 echo "=== Fetching gnome-sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
 
-# 3. Surgical Patching for Debian 12
-echo "=== Surgical Patching for Libadwaita 1.2 ==-"
-cd "$PROJECT_DIR"
-
-# A. Relax dependencies
-sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.74.0'/g" meson.build
-sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
-sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
-
-# B. Fix modern Libadwaita types in Vala
-find . -name "*.vala" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
-find . -name "*.vala" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
-
-# C. Fix modern Libadwaita types in Blueprints
-find . -name "*.blp" -exec sed -i 's/\bAdw.SpinRow\b/Adw.ActionRow/g' {} +
-find . -name "*.blp" -exec sed -i 's/\bAdw.SwitchRow\b/Adw.ActionRow/g' {} +
-
-# D. Fix C++ for older compilers
-sed -i '1i #include <ctime>\n#include <cstdlib>' lib/qqwing-wrapper.cpp
-sed -i 's/srand\s*(.*)/srand(time(NULL))/g' lib/qqwing-wrapper.cpp
-
-# 4. Build Sudoku
+# 3. Build Sudoku
 echo "=== Building Sudoku ==-"
+cd "$PROJECT_DIR"
 meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 5. Packaging
+# 4. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
@@ -84,5 +67,5 @@ exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
 
-./appimagetool "$APPDIR" Sudoku-46.0-x86_64.AppImage
+./appimagetool "$APPDIR" Sudoku-44.0-x86_64.AppImage
 echo "Done!"
