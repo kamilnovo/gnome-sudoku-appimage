@@ -30,12 +30,12 @@ echo "=== Surgical Patching for Libadwaita 1.2 ==-"
 
 cd "$PROJECT_DIR"
 
-# A. Relax dependencies
+# A. Force-relax versions in meson.build
+sed -i "s/glib_version = '[0-9.]*'/glib_version = '2.74.0'/g" meson.build
 sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.8.0'/g" meson.build
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.2.0'/g" meson.build
-sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.74.0'/g" meson.build
 
-# B. Rewrite problematic Blueprints manually to guarantee syntax correctness
+# B. Rewrite problematic Blueprints manually
 cat << EOF > src/blueprints/window.blp
 using Gtk 4.0;
 using Adw 1;
@@ -96,6 +96,31 @@ template \$SudokuPreferencesDialog : Adw.PreferencesWindow {
         title: _("Show Timer");
         [suffix] Gtk.Switch show_timer { valign: center; }
       }
+    }
+  }
+}
+EOF
+
+cat << EOF > src/blueprints/start-view.blp
+using Gtk 4.0;
+using Adw 1;
+
+template \$SudokuStartView : Adw.Bin {
+  Box {
+    orientation: vertical;
+    Adw.HeaderBar {
+      title-widget: Gtk.Label { label: _("Sudoku"); };
+      [end]
+      \$SudokuMenuButton menu_button {}
+    }
+    Gtk.Label {
+      label: _("Select Difficulty");
+      styles ["title-1"]
+    }
+    Button {
+      label: _("Start Game");
+      halign: center;
+      clicked => \$start_game_cb();
     }
   }
 }
