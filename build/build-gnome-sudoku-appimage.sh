@@ -30,13 +30,12 @@ echo "=== Setting up Subprojects with Wrap files ==-"
 cd "$PROJECT_DIR"
 mkdir -p subprojects
 
-# Create wrap files that EXPLICITLY provide the names Sudoku expects
+# Create wrap files with explicit dependency mappings
 cat << EOF > subprojects/glib.wrap
 [wrap-git]
 url = https://gitlab.gnome.org/GNOME/glib.git
 revision = 2.82.5
 depth = 1
-
 [provide]
 dependency_names = glib-2.0, gobject-2.0, gio-2.0, gmodule-2.0, gio-unix-2.0
 EOF
@@ -46,7 +45,6 @@ cat << EOF > subprojects/gtk4.wrap
 url = https://gitlab.gnome.org/GNOME/gtk.git
 revision = 4.16.12
 depth = 1
-
 [provide]
 dependency_names = gtk4
 EOF
@@ -56,7 +54,6 @@ cat << EOF > subprojects/libadwaita-1.wrap
 url = https://gitlab.gnome.org/GNOME/libadwaita.git
 revision = 1.6.3
 depth = 1
-
 [provide]
 dependency_names = libadwaita-1
 EOF
@@ -66,25 +63,13 @@ cat << EOF > subprojects/graphene-1.0.wrap
 url = https://github.com/ebassi/graphene.git
 revision = 1.10.8
 depth = 1
-
 [provide]
 dependency_names = graphene-1.0, graphene-gobject-1.0
 EOF
 
-cat << EOF > subprojects/json-glib-1.0.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/json-glib.git
-revision = master
-depth = 1
-
-[provide]
-dependency_names = json-glib-1.0
-EOF
-
 # 4. Build Sudoku
 echo "=== Building Sudoku + Modern Stack (Takes time) ==-"
-# Use --wrap-mode=forcefallback to ensure subprojects are used even if system has old versions.
-# We also disable features that increase build time or complexity.
+# Use forcefallback and break the Harfbuzz/Freetype cycle by disabling features in GTK
 meson setup build --prefix=/usr -Dbuildtype=release \
     --wrap-mode=forcefallback \
     -Dgtk:media-gstreamer=disabled \
