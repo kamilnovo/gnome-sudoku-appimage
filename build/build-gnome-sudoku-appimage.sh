@@ -8,18 +8,8 @@ APPDIR="AppDir"
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
+rm -rf "$APPDIR" "$PROJECT_DIR"
 mkdir -p "$APPDIR"
-
-# Fedora 41 has all build dependencies.
-echo "=== Building blueprint-compiler ==-"
-git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
-cd blueprint-compiler
-meson setup build --prefix=/usr
-DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
-export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
-export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib64/python3.13/site-packages:$PYTHONPATH"
-cd "$REPO_ROOT"
 
 # Fetch Sudoku source
 echo "=== Fetching gnome-sudoku $VERSION ==-"
