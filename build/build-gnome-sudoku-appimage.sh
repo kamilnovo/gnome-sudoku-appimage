@@ -129,7 +129,9 @@ while ($content =~ m/\bAdw\.SpinRow\s+([a-zA-Z0-9_]+)\s*\{/g) {
         $adj = substr($inner, $adj_prop_start, $adj_end - $adj_prop_start);
         # Ensure it ends with a semicolon for property placement
         $adj .= ";" unless $adj =~ /;\s*$/;
+        # Remove the block AND any trailing semicolon/whitespace in inner
         substr($inner, $adj_prop_start, $adj_end - $adj_prop_start) = "";
+        $inner =~ s/^\s*;\s*//m; 
     }
     my $replacement = "Adw.ActionRow {\n$inner\n  [suffix] Gtk.SpinButton $id { valign: center; $adj } \n}";
     substr($content, $start, $end - $start) = $replacement;
@@ -169,11 +171,11 @@ while ($content =~ m/\bGtk\.Label(?:\s+[a-zA-Z0-9_]+)?\s*\{/g) {
 }
 
 # 7. Semicolon Normalization (Picky compiler)
-# First remove all trailing semicolons after blocks
 $content =~ s/\}\s*;/}/g;
-# Ensure properties have semicolons, but NOT child widgets
-# This is tricky. We'll look for key: value without a trailing semicolon.
-$content =~ s/([a-z0-9-]+\s*:\s*[^;\{\}\n]+)(?<!;)(?=\n)/$1;/g;
+# Remove empty semicolons
+$content =~ s/^\s*;\s*$//mg;
+# Ensure properties have semicolons
+$content =~ s/([a-z0-9-]+\s*:\s*[^;\{\}\n]+)(?<!;)(\s*)$/$1;$2/mg;
 
 print $content;
 EOF
