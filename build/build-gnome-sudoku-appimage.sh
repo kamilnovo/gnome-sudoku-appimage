@@ -5,11 +5,12 @@ VERSION="49.4"
 REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
+LOCAL_PREFIX="$PWD/local_prefix"
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$PWD"
-rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest
-mkdir -p "$APPDIR"
+rm -rf "$APPDIR" "$PROJECT_DIR" blueprint-dest "$LOCAL_PREFIX"
+mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
 # 1. Build blueprint-compiler (v0.16.0)
 echo "=== Building blueprint-compiler ==-"
@@ -21,73 +22,47 @@ export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
 export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
 cd "$REPO_ROOT"
 
-# 2. Fetch Sudoku source
-echo "=== Fetching gnome-sudoku $VERSION ==-"
+# 2. Build modern GLib (Required by GTK 4.16)
+echo "=== Building GLib 2.82 ==-"
+git clone --depth 1 --branch 2.82.5 https://gitlab.gnome.org/GNOME/glib.git
+cd glib
+meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false
+meson install -C build
+cd "$REPO_ROOT"
+
+# 3. Build modern GTK 4.16
+echo "=== Building GTK 4.16 ==-"
+export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
+git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git
+cd gtk
+meson setup build --prefix="$LOCAL_PREFIX" \
+    -Dmedia-gstreamer=disabled \
+    -Dvulkan=disabled \
+    -Dbuild-demos=false \
+    -Dbuild-tests=false \
+    -Dbuild-examples=false
+meson install -C build
+cd "$REPO_ROOT"
+
+# 4. Build modern Libadwaita 1.6
+echo "=== Building Libadwaita 1.6 ==-"
+git clone --depth 1 --branch 1.6.3 https://gitlab.gnome.org/GNOME/libadwaita.git
+cd libadwaita
+meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dexamples=false -Dvapi=false
+meson install -C build
+cd "$REPO_ROOT"
+
+# 5. Build Sudoku 49.4
+echo "=== Building Sudoku $VERSION ==-"
 git clone --depth 1 --branch "$VERSION" "$REPO_URL" "$PROJECT_DIR"
-
-# 3. Add Subprojects for modern dependencies
-echo "=== Setting up Subprojects with Wrap files ==-"
 cd "$PROJECT_DIR"
-mkdir -p subprojects
-
-# Create wrap files with explicit dependency mappings
-cat << EOF > subprojects/glib.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/glib.git
-revision = 2.82.5
-depth = 1
-[provide]
-dependency_names = glib-2.0, gobject-2.0, gio-2.0, gmodule-2.0, gio-unix-2.0
-EOF
-
-cat << EOF > subprojects/gtk4.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/gtk.git
-revision = 4.16.12
-depth = 1
-[provide]
-dependency_names = gtk4
-EOF
-
-cat << EOF > subprojects/libadwaita-1.wrap
-[wrap-git]
-url = https://gitlab.gnome.org/GNOME/libadwaita.git
-revision = 1.6.3
-depth = 1
-[provide]
-dependency_names = libadwaita-1
-EOF
-
-cat << EOF > subprojects/graphene-1.0.wrap
-[wrap-git]
-url = https://github.com/ebassi/graphene.git
-revision = 1.10.8
-depth = 1
-[provide]
-dependency_names = graphene-1.0, graphene-gobject-1.0
-EOF
-
-# 4. Build Sudoku
-echo "=== Building Sudoku + Modern Stack (Takes time) ==-"
-# Use forcefallback and break the Harfbuzz/Freetype cycle by disabling features in GTK
-meson setup build --prefix=/usr -Dbuildtype=release \
-    --wrap-mode=forcefallback \
-    -Dgtk:media-gstreamer=disabled \
-    -Dgtk:vulkan=disabled \
-    -Dgtk:build-demos=false \
-    -Dgtk:build-tests=false \
-    -Dgtk:build-examples=false \
-    -Dlibadwaita:tests=false \
-    -Dlibadwaita:examples=false \
-    -Dlibadwaita:vapi=false \
-    -Dglib:tests=false \
-    -Dglib:nls=disabled
-    
+meson setup build --prefix=/usr -Dbuildtype=release
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
 cd "$REPO_ROOT"
 
-# 5. Packaging
+# 6. Packaging
 echo "=== Packaging AppImage ==-"
 wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
 wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
@@ -100,7 +75,12 @@ export DEPLOY_GTK_VERSION=4
 
 ./linuxdeploy --appdir "$APPDIR" \
     -e "$APPDIR/usr/bin/gnome-sudoku" \
-    --plugin gtk
+    --plugin gtk \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgtk-4.so.1" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libadwaita-1.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libglib-2.0.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgio-2.0.so.0" \
+    --library "$LOCAL_PREFIX/lib/x86_64-linux-gnu/libgobject-2.0.so.0"
 
 glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 
