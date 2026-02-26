@@ -39,8 +39,9 @@ git clone --depth 1 https://github.com/fribidi/fribidi.git subprojects/fribidi
 
 # 4. Build Sudoku
 echo "=== Building Sudoku with Subprojects ==-"
+# Use --wrap-mode=forcefallback to ensure all dependencies use the subprojects we just cloned.
 meson setup build --prefix=/usr -Dbuildtype=release \
-    --force-fallback-for=libadwaita-1,gtk4,glib-2.0,graphene-1.0,pango,harfbuzz,fribidi \
+    --wrap-mode=forcefallback \
     -Dgtk:media-gstreamer=disabled \
     -Dgtk:vulkan=disabled \
     -Dgtk:build-demos=false \
@@ -48,7 +49,8 @@ meson setup build --prefix=/usr -Dbuildtype=release \
     -Dgtk:build-examples=false \
     -Dlibadwaita:tests=false \
     -Dlibadwaita:examples=false \
-    -Dlibadwaita:vapi=false
+    -Dlibadwaita:vapi=false \
+    -Dglib:tests=false
     
 meson compile -C build -v
 DESTDIR="$REPO_ROOT/$APPDIR" meson install -C build
