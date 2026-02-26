@@ -2,7 +2,8 @@
 set -e
 export APPIMAGE_EXTRACT_AND_RUN=1
 VERSION="49.4"
-REPO_URL="https://gitlab.gnome.org/GNOME/gnome-sudoku.git"
+# Use GitHub mirrors because GitLab GNOME is currently down (503)
+REPO_URL="https://github.com/GNOME/gnome-sudoku.git"
 PROJECT_DIR="gnome-sudoku-$VERSION"
 APPDIR="AppDir"
 LOCAL_PREFIX="$PWD/local_prefix"
@@ -14,7 +15,12 @@ mkdir -p "$APPDIR" "$LOCAL_PREFIX"
 
 # 1. Build blueprint-compiler (v0.16.0)
 echo "=== Building blueprint-compiler ==-"
+# Blueprint-compiler isn't officially mirrored on GitHub under GNOME, but we can try the author's repo or a cache.
+# If this fails, we will skip it and hope the system one is okay (but it isn't in 22.04).
+# We'll use a reliable mirror if possible.
+git clone --depth 1 --branch v0.16.0 https://github.com/jwestman/blueprint-compiler.git || \
 git clone --depth 1 --branch v0.16.0 https://gitlab.gnome.org/jwestman/blueprint-compiler.git
+
 cd blueprint-compiler
 meson setup build --prefix=/usr
 DESTDIR="$REPO_ROOT/blueprint-dest" meson install -C build
@@ -22,9 +28,9 @@ export PATH="$REPO_ROOT/blueprint-dest/usr/bin:$PATH"
 export PYTHONPATH="$REPO_ROOT/blueprint-dest/usr/lib/python3/dist-packages:$PYTHONPATH"
 cd "$REPO_ROOT"
 
-# 2. Build modern GLib (Required by GTK 4.16)
+# 2. Build modern GLib
 echo "=== Building GLib 2.82 ==-"
-git clone --depth 1 --branch 2.82.5 https://gitlab.gnome.org/GNOME/glib.git
+git clone --depth 1 --branch 2.82.5 https://github.com/GNOME/glib.git
 cd glib
 meson setup build --prefix="$LOCAL_PREFIX" -Dtests=false -Dnls=disabled
 meson install -C build
@@ -42,9 +48,8 @@ cd "$REPO_ROOT"
 echo "=== Building GTK 4.16 ==-"
 export PKG_CONFIG_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$LOCAL_PREFIX/lib/pkgconfig:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$LOCAL_PREFIX/lib/x86_64-linux-gnu:$LOCAL_PREFIX/lib:$LD_LIBRARY_PATH"
-git clone --depth 1 --branch 4.16.12 https://gitlab.gnome.org/GNOME/gtk.git
+git clone --depth 1 --branch 4.16.12 https://github.com/GNOME/gtk.git
 cd gtk
-# Minimal GTK build
 meson setup build --prefix="$LOCAL_PREFIX" \
     --wrap-mode=nodownload \
     -Dmedia-gstreamer=disabled \
@@ -58,7 +63,7 @@ cd "$REPO_ROOT"
 
 # 5. Build Libadwaita 1.6
 echo "=== Building Libadwaita 1.6 ==-"
-git clone --depth 1 --branch 1.6.3 https://gitlab.gnome.org/GNOME/libadwaita.git
+git clone --depth 1 --branch 1.6.3 https://github.com/GNOME/libadwaita.git
 cd libadwaita
 meson setup build --prefix="$LOCAL_PREFIX" \
     -Dtests=false \
