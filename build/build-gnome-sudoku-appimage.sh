@@ -21,6 +21,10 @@ sed -i "s/gtk4', version: '>= [0-9.]*'/gtk4', version: '>= 4.16.0'/g" "$PROJECT_
 sed -i "s/libadwaita-1', version: '>= [0-9.]*'/libadwaita-1', version: '>= 1.6.0'/g" "$PROJECT_DIR/meson.build"
 sed -i "s/glib-2.0', version: '>= [0-9.]*'/glib-2.0', version: '>= 2.82.0'/g" "$PROJECT_DIR/meson.build"
 
+# Patch Blueprints for Libadwaita 1.6 compatibility
+echo "=== Patching Blueprints ==-"
+find "$PROJECT_DIR" -name "*.blp" -exec sed -i '/enable-transitions:/d' {} +
+
 # Minimal fixes (Only C++ and non-UI code)
 echo "=== Applying Minimal Code Fixes ==-"
 sed -i '1i #include <ctime>\n#include <cstdlib>' "$PROJECT_DIR/lib/qqwing-wrapper.cpp"
