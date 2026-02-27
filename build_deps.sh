@@ -29,13 +29,10 @@ fi
 safe_extract() {
     local tarball=$1
     local dir=$2
-    if [ ! -d "$dir" ]; then
-        echo "Extracting $tarball to $dir..."
-        mkdir -p "$dir"
-        tar -xf "$tarball" -C "$dir" --strip-components=1 || tar -xf "$tarball" -C "$dir"
-        return 0 # New extraction
-    fi
-    return 0 # Already extracted
+    echo "Extracting $tarball to $dir..."
+    mkdir -p "$dir"
+    tar -xf "$tarball" -C "$dir" --strip-components=1 || tar -xf "$tarball" -C "$dir"
+    echo "Successfully extracted $tarball to $dir"
 }
 
 build_component() {
@@ -45,23 +42,15 @@ build_component() {
     local check_file=$4
     local min_version=$5
     
-    # Check if we should rebuild
-    local rebuild=false
-    if [[ "$extra_args" == *"-Dvapi=true"* ]] || [[ "$extra_args" == *"-Dvapi=enabled"* ]]; then
-        local vapi_name=$(echo $name | tr '[:upper:]' '[:lower:]')
-        # Check specific vapi files
-        if [[ "$name" == "GTK4" ]] && [ ! -f "$DEPS_PREFIX/share/vala/vapi/gtk4.vapi" ]; then rebuild=true; fi
-        if [[ "$name" == "Libadwaita" ]] && [ ! -f "$DEPS_PREFIX/share/vala/vapi/libadwaita-1.vapi" ]; then rebuild=true; fi
-        if [[ "$name" == "AppStream" ]] && [ ! -f "$DEPS_PREFIX/share/vala/vapi/appstream.vapi" ]; then rebuild=true; fi
-    fi
+    local installed_check_path="$DEPS_PREFIX/$check_file"
 
-    if [ "$rebuild" = "false" ] && [ -n "$check_file" ] && [ -f "$DEPS_PREFIX/$check_file" ]; then
+    if [ -n "$check_file" ] && [ -f "$installed_check_path" ]; then
         if [ -z "$min_version" ]; then
             echo "=== $name already built, skipping ==="
             return 0
         fi
         local pkg_name=$(basename ${check_file%.pc})
-        local current_version=$(PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig" pkg-config --modversion $pkg_name 2>/dev/null || echo "0")
+        local current_version=$(PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig" pkg-config --modversion "$pkg_name" 2>/dev/null || echo "0")
         if [ "$(printf '%s\n' "$min_version" "$current_version" | sort -V | head -n1)" = "$min_version" ]; then
              echo "=== $name version $current_version >= $min_version, skipping ==="
              return 0
@@ -98,10 +87,10 @@ echo "Starting build process for dependencies..."
 
 # 0.0 Gettext
 if [ ! -f "$DEPS_PREFIX/bin/msgfmt" ] || [ ! -f "$DEPS_PREFIX/bin/msgmerge" ]; then
-    if [ ! -d "gettext-src" ]; then
-        wget -q https://ftp.gnu.org/pub/gnu/gettext/gettext-0.22.5.tar.gz -O gettext.tar.gz
-        safe_extract gettext.tar.gz gettext-src
-    fi
+    echo "Gettext not found in deps-dist, attempting to build..."
+    if [ -d "gettext-src" ]; then rm -rf gettext-src; fi
+    wget -q https://ftp.gnu.org/pub/gnu/gettext/gettext-0.22.5.tar.gz -O gettext.tar.gz || { echo "Failed to download gettext"; exit 1; }
+    safe_extract gettext.tar.gz gettext-src
     echo "=== Building Gettext ==="
     cd "$REPO_ROOT/gettext-src"
     ./configure --prefix="$DEPS_PREFIX" --disable-static
@@ -113,10 +102,10 @@ fi
 
 # 0.1 Flex & Bison
 if [ ! -f "$DEPS_PREFIX/bin/flex" ]; then
-    if [ ! -d "flex-src" ]; then
-        wget -q https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz -O flex.tar.gz
-        safe_extract flex.tar.gz flex-src
-    fi
+    echo "Flex not found in deps-dist, attempting to build..."
+    if [ -d "flex-src" ]; then rm -rf flex-src; fi
+    wget -q https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz -O flex.tar.gz || { echo "Failed to download flex"; exit 1; }
+    safe_extract flex.tar.gz flex-src
     echo "=== Building Flex ==="
     cd "$REPO_ROOT/flex-src"
     [ -f configure ] || ./autogen.sh
@@ -128,10 +117,10 @@ if [ ! -f "$DEPS_PREFIX/bin/flex" ]; then
 fi
 
 if [ ! -f "$DEPS_PREFIX/bin/bison" ]; then
-    if [ ! -d "bison-src" ]; then
-        wget -q https://ftp.gnu.org/pub/gnu/bison/bison-3.8.2.tar.xz -O bison.tar.xz
-        safe_extract bison.tar.xz bison-src
-    fi
+    echo "Bison not found in deps-dist, attempting to build..."
+    if [ -d "bison-src" ]; then rm -rf bison-src; fi
+    wget -q https://ftp.gnu.org/pub/gnu/bison/bison-3.8.2.tar.xz -O bison.tar.xz || { echo "Failed to download bison"; exit 1; }
+    safe_extract bison.tar.xz bison-src
     echo "=== Building Bison ==="
     cd "$REPO_ROOT/bison-src"
     ./configure --prefix="$DEPS_PREFIX"
@@ -141,32 +130,102 @@ if [ ! -f "$DEPS_PREFIX/bin/bison" ]; then
     echo "Successfully built and installed Bison"
 fi
 
-build_component "GObject-Introspection" "gi-src" "-Dbuild_introspection_data=false" "lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc" "1.80.1"
+# 0.2 GObject-Introspection 1.80.1
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc" ]; then
+    echo "GObject-Introspection not found in deps-dist, attempting to build..."
+    if [ -d "gi-src" ]; then rm -rf gi-src; fi
+    wget -q https://download.gnome.org/sources/gobject-introspection/1.80/gobject-introspection-1.80.1.tar.xz -O gi.tar.xz || { echo "Failed to download gobject-introspection"; exit 1; }
+    safe_extract gi.tar.xz gi-src
+    build_component "GObject-Introspection" "gi-src" "-Dbuild_introspection_data=false" "lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc" "1.80.1"
+fi
 
-build_component "GLib" "glib-2.84-src" "-Dtests=false -Dintrospection=enabled" "lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" "2.84.0"
+# 1. GLib 2.84.0
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
+    echo "GLib not found in deps-dist, attempting to build..."
+    if [ -d "glib-2.84-src" ]; then rm -rf glib-2.84-src; fi
+    wget -q https://download.gnome.org/sources/glib/2.84/glib-2.84.0.tar.xz -O glib-2.84.tar.xz || { echo "Failed to download glib"; exit 1; }
+    safe_extract glib-2.84.tar.xz glib-2.84-src
+    build_component "GLib" "glib-2.84-src" "-Dtests=false -Dintrospection=enabled" "lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" "2.84.0"
+fi
 
-build_component "PyGObject" "pygobject-src" "-Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/pygobject-3.0.pc" "3.50.0"
+# 1.1 PyGObject 3.50.0
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pygobject-3.0.pc" ]; then
+    echo "PyGObject not found in deps-dist, attempting to build..."
+    if [ -d "pygobject-src" ]; then rm -rf pygobject-src; fi
+    wget -q https://download.gnome.org/sources/pygobject/3.50/pygobject-3.50.0.tar.xz -O pygobject.tar.xz || { echo "Failed to download pygobject"; exit 1; }
+    safe_extract pygobject.tar.xz pygobject-src
+    build_component "PyGObject" "pygobject-src" "-Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/pygobject-3.0.pc" "3.50.0"
+fi
 
-build_component "Libdrm" "libdrm-src" "-Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/libdrm.pc"
+# 2. Libdrm
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libdrm.pc" ]; then
+    echo "Libdrm not found in deps-dist, attempting to build..."
+    if [ -d "libdrm-src" ]; then rm -rf libdrm-src; fi
+    wget -q https://dri.freedesktop.org/libdrm/libdrm-2.4.124.tar.xz -O libdrm.tar.xz || { echo "Failed to download libdrm"; exit 1; }
+    safe_extract libdrm.tar.xz libdrm-src
+    build_component "Libdrm" "libdrm-src" "-Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/libdrm.pc"
+fi
 
-build_component "Wayland" "wayland-src" "-Dtests=false -Ddocumentation=false" "lib/x86_64-linux-gnu/pkgconfig/wayland-client.pc"
+# 3. Wayland
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/wayland-client.pc" ]; then
+    echo "Wayland not found in deps-dist, attempting to build..."
+    if [ -d "wayland-src" ]; then rm -rf wayland-src; fi
+    wget -q https://gitlab.freedesktop.org/wayland/wayland/-/archive/1.23.0/wayland-1.23.0.tar.gz -O wayland.tar.gz || { echo "Failed to download wayland"; exit 1; }
+    safe_extract wayland.tar.gz wayland-src
+    build_component "Wayland" "wayland-src" "-Dtests=false -Ddocumentation=false" "lib/x86_64-linux-gnu/pkgconfig/wayland-client.pc"
+fi
 
-build_component "Wayland-Protocols" "wayland-protocols-src" "" "share/pkgconfig/wayland-protocols.pc"
+# 4. Wayland-Protocols
+if [ ! -f "$DEPS_PREFIX/share/pkgconfig/wayland-protocols.pc" ]; then
+    echo "Wayland-Protocols not found in deps-dist, attempting to build..."
+    if [ -d "wayland-protocols-src" ]; then rm -rf wayland-protocols-src; fi
+    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.41/wayland-protocols-1.41.tar.gz -O wayland-protocols.tar.gz || { echo "Failed to download wayland-protocols"; exit 1; }
+    safe_extract wayland-protocols.tar.gz wayland-protocols-src
+    build_component "Wayland-Protocols" "wayland-protocols-src" "" "share/pkgconfig/wayland-protocols.pc"
+fi
 
-build_component "Cairo" "cairo-src" "-Dtests=disabled" "lib/x86_64-linux-gnu/pkgconfig/cairo.pc" "1.18.2"
+# 5. Cairo
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/cairo.pc" ]; then
+    echo "Cairo not found in deps-dist, attempting to build..."
+    if [ -d "cairo-src" ]; then rm -rf cairo-src; fi
+    wget -q https://www.cairographics.org/releases/cairo-1.18.2.tar.xz -O cairo.tar.xz || { echo "Failed to download cairo"; exit 1; }
+    safe_extract cairo.tar.xz cairo-src
+    build_component "Cairo" "cairo-src" "-Dtests=disabled" "lib/x86_64-linux-gnu/pkgconfig/cairo.pc" "1.18.2"
+fi
 
-build_component "Graphene" "graphene-src" "-Dintrospection=disabled -Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc"
+# 6. Graphene
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc" ]; then
+    echo "Graphene not found in deps-dist, attempting to build..."
+    if [ -d "graphene-src" ]; then rm -rf graphene-src; fi
+    wget -q https://download.gnome.org/sources/graphene/1.10/graphene-1.10.8.tar.xz -O graphene.tar.xz || { echo "Failed to download graphene"; exit 1; }
+    safe_extract graphene.tar.xz graphene-src
+    build_component "Graphene" "graphene-src" "-Dintrospection=disabled -Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc"
+fi
 
-build_component "Pango" "pango-1.56-src" "-Dintrospection=enabled -Dfontconfig=enabled" "lib/x86_64-linux-gnu/pkgconfig/pango.pc" "1.56.1"
+# 7. Pango 1.56.1
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pango.pc" ]; then
+    echo "Pango not found in deps-dist, attempting to build..."
+    if [ -d "pango-1.56-src" ]; then rm -rf pango-1.56-src; fi
+    wget -q https://download.gnome.org/sources/pango/1.56/pango-1.56.1.tar.xz -O pango-1.56.tar.xz || { echo "Failed to download pango"; exit 1; }
+    safe_extract pango-1.56.tar.xz pango-1.56-src
+    build_component "Pango" "pango-1.56-src" "-Dintrospection=enabled -Dfontconfig=enabled" "lib/x86_64-linux-gnu/pkgconfig/pango.pc" "1.56.1"
+fi
 
-build_component "Blueprint" "blueprint-src" "" "bin/blueprint-compiler"
+# 8. Blueprint Compiler
+if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
+    echo "Blueprint Compiler not found in deps-dist, attempting to build..."
+    if [ -d "blueprint-src" ]; then rm -rf blueprint-src; fi
+    wget -q "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz" -O blueprint.tar.gz || { echo "Failed to download blueprint-compiler"; exit 1; }
+    safe_extract blueprint.tar.gz blueprint-src
+    build_component "Blueprint" "blueprint-src" "" "bin/blueprint-compiler"
+fi
 
 # 9. Gperf
-if [ ! -d "gperf-src" ]; then
-    wget -q https://ftp.gnu.org/pub/gnu/gperf/gperf-3.1.tar.gz -O gperf.tar.gz
-fi
-safe_extract gperf.tar.gz gperf-src
 if [ ! -f "$DEPS_PREFIX/bin/gperf" ]; then
+    echo "Gperf not found in deps-dist, attempting to build..."
+    if [ -d "gperf-src" ]; then rm -rf gperf-src; fi
+    wget -q https://ftp.gnu.org/pub/gnu/gperf/gperf-3.1.tar.gz -O gperf.tar.gz || { echo "Failed to download gperf"; exit 1; }
+    safe_extract gperf.tar.gz gperf-src
     echo "=== Building Gperf ==="
     cd "$REPO_ROOT/gperf-src"
     ./configure --prefix="$DEPS_PREFIX"
@@ -176,14 +235,21 @@ if [ ! -f "$DEPS_PREFIX/bin/gperf" ]; then
     echo "Successfully built and installed Gperf"
 fi
 
-build_component "Libxmlb" "xmlb-src" "-Dtests=false -Dintrospection=false -Dgtkdoc=false" "lib/x86_64-linux-gnu/pkgconfig/xmlb.pc"
+# 10. Libxmlb
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/xmlb.pc" ]; then
+    echo "Libxmlb not found in deps-dist, attempting to build..."
+    if [ -d "xmlb-src" ]; then rm -rf xmlb-src; fi
+    wget -q https://github.com/hughsie/libxmlb/releases/download/0.3.25/libxmlb-0.3.25.tar.xz -O xmlb.tar.xz || { echo "Failed to download libxmlb"; exit 1; }
+    safe_extract xmlb.tar.xz xmlb-src
+    build_component "Libxmlb" "xmlb-src" "-Dtests=false -Dintrospection=false -Dgtkdoc=false" "lib/x86_64-linux-gnu/pkgconfig/xmlb.pc"
+fi
 
 # 11. Libyaml
-if [ ! -d "yaml-src" ]; then
-    wget -q https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz -O yaml.tar.gz
-fi
-safe_extract yaml.tar.gz yaml-src
 if [ ! -f "$DEPS_PREFIX/lib/libyaml.so" ]; then
+    echo "Libyaml not found in deps-dist, attempting to build..."
+    if [ -d "yaml-src" ]; then rm -rf yaml-src; fi
+    wget -q https://github.com/yaml/libyaml/releases/download/0.2.5/yaml-0.2.5.tar.gz -O yaml.tar.gz || { echo "Failed to download libyaml"; exit 1; }
+    safe_extract yaml.tar.gz yaml-src
     echo "=== Building Libyaml ==="
     cd "$REPO_ROOT/yaml-src"
     [ -f configure ] || autoreconf -fiv || true
@@ -195,11 +261,12 @@ if [ ! -f "$DEPS_PREFIX/lib/libyaml.so" ]; then
 fi
 
 # 12. AppStream
-if [ ! -d "appstream-src" ]; then
-    wget -q https://www.freedesktop.org/software/appstream/releases/AppStream-1.0.4.tar.xz -O appstream.tar.xz
-fi
-safe_extract appstream.tar.xz appstream-src
 if [ ! -f "$DEPS_PREFIX/share/vala/vapi/appstream.vapi" ]; then
+    echo "AppStream not found in deps-dist, attempting to build..."
+    if [ -d "appstream-src" ]; then rm -rf appstream-src; fi
+    wget -q https://www.freedesktop.org/software/appstream/releases/AppStream-1.0.4.tar.xz -O appstream.tar.xz || { echo "Failed to download appstream"; exit 1; }
+    safe_extract appstream.tar.xz appstream-src
+    
     actual_src=$(find "$REPO_ROOT/appstream-src" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname)
     sed -i "s/dependency('libcurl'/dependency('libcurl', required: false/" "$actual_src/meson.build" || true
     sed -i "s/dependency('libsystemd')/dependency('libsystemd', required: false)/" "$actual_src/meson.build" || true
@@ -221,22 +288,24 @@ gboolean as_curl_check_url_exists (AsCurl *acurl, const gchar *url, GError **err
 GBytes* as_curl_download_bytes (AsCurl *acurl, const gchar *url, GError **error);
 GBytes* as_curl_download_bytes (AsCurl *acurl, const gchar *url, GError **error) { return NULL; }
 EOF
+    build_component "AppStream" "appstream-src" "-Dqt=false -Dvapi=true -Dgir=true -Dinstall-docs=false -Dstemming=false -Dsystemd=false -Ddocs=false" "lib/x86_64-linux-gnu/pkgconfig/appstream.pc"
 fi
-build_component "AppStream" "appstream-src" "-Dqt=false -Dvapi=true -Dgir=true -Dinstall-docs=false -Dstemming=false -Dsystemd=false -Ddocs=false" "lib/x86_64-linux-gnu/pkgconfig/appstream.pc"
 
 # 13. GTK4
-if [ ! -d "gtk-src" ]; then
-    wget -q https://download.gnome.org/sources/gtk/4.18/gtk-4.18.1.tar.xz -O gtk.tar.xz
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
+    echo "GTK4 not found in deps-dist, attempting to build..."
+    if [ -d "gtk-src" ]; then rm -rf gtk-src; fi
+    wget -q https://download.gnome.org/sources/gtk/4.18/gtk-4.18.1.tar.xz -O gtk.tar.xz || { echo "Failed to download gtk"; exit 1; }
+    safe_extract gtk.tar.xz gtk-src
+    build_component "GTK4" "gtk-src" "-Dmedia-gstreamer=disabled -Dprint-cups=disabled -Dintrospection=enabled -Dbuild-demos=false -Dbuild-tests=false -Dbuild-examples=false -Ddocumentation=false -Dvulkan=disabled -Dx11-backend=true -Dwayland-backend=true -Dvapi=true" "lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" "4.18.1"
 fi
-safe_extract gtk.tar.xz gtk-src
-build_component "GTK4" "gtk-src" "-Dmedia-gstreamer=disabled -Dprint-cups=disabled -Dintrospection=enabled -Dbuild-demos=false -Dbuild-tests=false -Dbuild-examples=false -Ddocumentation=false -Dvulkan=disabled -Dx11-backend=true -Dwayland-backend=true -Dvapi=true" "lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" "4.18.1"
 
 # 14. Libadwaita
-if [ ! -d "adwaita-src" ]; then
-    wget -q https://download.gnome.org/sources/libadwaita/1.7/libadwaita-1.7.0.tar.xz -O adwaita.tar.xz
-fi
-safe_extract adwaita.tar.xz adwaita-src
-if [ ! -f "$DEPS_PREFIX/share/vala/vapi/libadwaita-1.vapi" ]; then
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
+    echo "Libadwaita not found in deps-dist, attempting to build..."
+    if [ -d "adwaita-src" ]; then rm -rf adwaita-src; fi
+    wget -q https://download.gnome.org/sources/libadwaita/1.7/libadwaita-1.7.0.tar.xz -O adwaita.tar.xz || { echo "Failed to download libadwaita"; exit 1; }
+    safe_extract adwaita.tar.xz adwaita-src
     actual_src=$(find "$REPO_ROOT/adwaita-src" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname)
     # Patch adwaita
     perl -0777 -pi -e "s/appstream_dep = dependency\('appstream',.*?\) /appstream_dep = dependency('appstream', required: false) # /gs" "$actual_src/src/meson.build"
@@ -246,7 +315,7 @@ if [ ! -f "$DEPS_PREFIX/share/vala/vapi/libadwaita-1.vapi" ]; then
     sed -i "s/subdir('po')/# subdir('po')/" "$actual_src/meson.build"
     rm -f "$actual_src/subprojects/gtk.wrap"
     rm -f "$actual_src/subprojects/appstream.wrap"
+    build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true" "lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc"
 fi
-build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true" "lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc"
 
 echo "All dependencies built in $DEPS_PREFIX"
