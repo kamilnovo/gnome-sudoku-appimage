@@ -199,7 +199,8 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc" 
     if [ -d "graphene-src" ]; then rm -rf graphene-src; fi
     wget -q https://download.gnome.org/sources/graphene/1.10/graphene-1.10.8.tar.xz -O graphene.tar.xz || { echo "Failed to download graphene"; exit 1; }
     safe_extract graphene.tar.xz graphene-src
-    build_component "Graphene" "graphene-src" "-Dintrospection=disabled -Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc"
+    # Enable introspection for Graphene as GTK4 needs it
+    build_component "Graphene" "graphene-src" "-Dintrospection=enabled -Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc"
 fi
 
 # 7. Pango 1.56.1
@@ -297,8 +298,6 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     if [ -d "gtk-src" ]; then rm -rf gtk-src; fi
     wget -q https://download.gnome.org/sources/gtk/4.18/gtk-4.18.1.tar.xz -O gtk.tar.xz || { echo "Failed to download gtk"; exit 1; }
     safe_extract gtk.tar.xz gtk-src
-    # GTK4 does NOT have a -Dvapi option. It uses -Dbuild-testutils=true or similar?
-    # Actually, it generates VAPI automatically if vapigen is found and introspection is enabled.
     build_component "GTK4" "gtk-src" "-Dmedia-gstreamer=disabled -Dprint-cups=disabled -Dintrospection=enabled -Dbuild-demos=false -Dbuild-tests=false -Dbuild-examples=false -Ddocumentation=false -Dvulkan=disabled -Dx11-backend=true -Dwayland-backend=true" "lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" "4.18.1"
 fi
 
