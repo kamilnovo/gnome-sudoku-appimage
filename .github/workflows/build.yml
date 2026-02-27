@@ -1,0 +1,42 @@
+name: Build GNOME Sudoku AppImage
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgee-0.8-dev libqqwing-dev libjson-glib-dev libxml2-dev libxslt-dev gettext autoconf automake libtool autopoint
+          python3 -m venv venv_build
+          source venv_build/bin/activate
+          pip install meson ninja
+
+      - name: Build dependencies
+        run: |
+          source venv_build/bin/activate
+          bash build_deps.sh
+
+      - name: Build and package Sudoku
+        run: |
+          source venv_build/bin/activate
+          bash build/build-gnome-sudoku-appimage.sh
+          
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sudoku-AppImage
+          path: "Sudoku-*.AppImage"
