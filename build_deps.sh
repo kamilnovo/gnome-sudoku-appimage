@@ -91,7 +91,10 @@ build_component() {
     
     "$MESON" compile -C "$build_dir"
     "$MESON" install -C "$build_dir"
+    echo "Successfully built and installed $name"
 }
+
+echo "Starting build process for dependencies..."
 
 # 0.0 Gettext
 if [ ! -f "$DEPS_PREFIX/bin/msgfmt" ] || [ ! -f "$DEPS_PREFIX/bin/msgmerge" ]; then
@@ -99,11 +102,13 @@ if [ ! -f "$DEPS_PREFIX/bin/msgfmt" ] || [ ! -f "$DEPS_PREFIX/bin/msgmerge" ]; t
         wget -q https://ftp.gnu.org/pub/gnu/gettext/gettext-0.22.5.tar.gz -O gettext.tar.gz
         safe_extract gettext.tar.gz gettext-src
     fi
+    echo "=== Building Gettext ==="
     cd "$REPO_ROOT/gettext-src"
     ./configure --prefix="$DEPS_PREFIX" --disable-static
     make -j$(nproc)
     make install
     cd "$REPO_ROOT"
+    echo "Successfully built and installed Gettext"
 fi
 
 # 0.1 Flex & Bison
@@ -112,12 +117,14 @@ if [ ! -f "$DEPS_PREFIX/bin/flex" ]; then
         wget -q https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz -O flex.tar.gz
         safe_extract flex.tar.gz flex-src
     fi
+    echo "=== Building Flex ==="
     cd "$REPO_ROOT/flex-src"
     [ -f configure ] || ./autogen.sh
     ./configure --prefix="$DEPS_PREFIX"
     make -j$(nproc)
     make install
     cd "$REPO_ROOT"
+    echo "Successfully built and installed Flex"
 fi
 
 if [ ! -f "$DEPS_PREFIX/bin/bison" ]; then
@@ -125,87 +132,33 @@ if [ ! -f "$DEPS_PREFIX/bin/bison" ]; then
         wget -q https://ftp.gnu.org/pub/gnu/bison/bison-3.8.2.tar.xz -O bison.tar.xz
         safe_extract bison.tar.xz bison-src
     fi
+    echo "=== Building Bison ==="
     cd "$REPO_ROOT/bison-src"
     ./configure --prefix="$DEPS_PREFIX"
     make -j$(nproc)
     make install
     cd "$REPO_ROOT"
+    echo "Successfully built and installed Bison"
 fi
 
-# 0.2 GObject-Introspection 1.80.1
-if [ ! -d "gi-src" ]; then
-    wget -q https://download.gnome.org/sources/gobject-introspection/1.80/gobject-introspection-1.80.1.tar.xz -O gi.tar.xz
-    safe_extract gi.tar.xz gi-src
-fi
-# Revert ccompiler.py patch as it seems to be ineffective
-# GI_COMPILER_PY="$REPO_ROOT/gi-src/giscanner/ccompiler.py"
-# if [ -f "$GI_COMPILER_PY" ] && grep -q "from distutils.msvccompiler import MSVCCompiler" "$GI_COMPILER_PY"; then
-#     echo "Patching gobject-introspection ccompiler.py for distutils issue..."
-#     sed -i "s/from distutils.msvccompiler import MSVCCompiler/from setuptools.distutils.msvccompiler import MSVCCompiler/" "$GI_COMPILER_PY"
-# fi
 build_component "GObject-Introspection" "gi-src" "-Dbuild_introspection_data=false" "lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc" "1.80.1"
 
-# 1. GLib 2.84.0
-if [ ! -d "glib-2.84-src" ]; then
-    wget -q https://download.gnome.org/sources/glib/2.84/glib-2.84.0.tar.xz -O glib-2.84.tar.xz
-    safe_extract glib-2.84.tar.xz glib-2.84-src
-fi
 build_component "GLib" "glib-2.84-src" "-Dtests=false -Dintrospection=enabled" "lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" "2.84.0"
 
-# 1.1 PyGObject 3.50.0
-if [ ! -d "pygobject-src" ]; then
-    wget -q https://download.gnome.org/sources/pygobject/3.50/pygobject-3.50.0.tar.xz -O pygobject.tar.xz
-    safe_extract pygobject.tar.xz pygobject-src
-fi
 build_component "PyGObject" "pygobject-src" "-Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/pygobject-3.0.pc" "3.50.0"
 
-# 2. Libdrm
-if [ ! -d "libdrm-src" ]; then
-    wget -q https://dri.freedesktop.org/libdrm/libdrm-2.4.124.tar.xz -O libdrm.tar.xz
-fi
-safe_extract libdrm.tar.xz libdrm-src
 build_component "Libdrm" "libdrm-src" "-Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/libdrm.pc"
 
-# 3. Wayland
-if [ ! -d "wayland-src" ]; then
-    wget -q https://gitlab.freedesktop.org/wayland/wayland/-/archive/1.23.0/wayland-1.23.0.tar.gz -O wayland.tar.gz
-fi
-safe_extract wayland.tar.gz wayland-src
 build_component "Wayland" "wayland-src" "-Dtests=false -Ddocumentation=false" "lib/x86_64-linux-gnu/pkgconfig/wayland-client.pc"
 
-# 4. Wayland-Protocols
-if [ ! -d "wayland-protocols-src" ]; then
-    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.41/wayland-protocols-1.41.tar.gz -O wayland-protocols.tar.gz
-fi
-safe_extract wayland-protocols.tar.gz wayland-protocols-src
 build_component "Wayland-Protocols" "wayland-protocols-src" "" "share/pkgconfig/wayland-protocols.pc"
 
-# 5. Cairo
-if [ ! -d "cairo-src" ]; then
-    wget -q https://www.cairographics.org/releases/cairo-1.18.2.tar.xz -O cairo.tar.xz
-fi
-safe_extract cairo.tar.xz cairo-src
 build_component "Cairo" "cairo-src" "-Dtests=disabled" "lib/x86_64-linux-gnu/pkgconfig/cairo.pc" "1.18.2"
 
-# 6. Graphene
-if [ ! -d "graphene-src" ]; then
-    wget -q https://download.gnome.org/sources/graphene/1.10/graphene-1.10.8.tar.xz -O graphene.tar.xz
-fi
-safe_extract graphene.tar.xz graphene-src
 build_component "Graphene" "graphene-src" "-Dintrospection=disabled -Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc"
 
-# 7. Pango 1.56.1
-if [ ! -d "pango-1.56-src" ]; then
-    wget -q https://download.gnome.org/sources/pango/1.56/pango-1.56.1.tar.xz -O pango-1.56.tar.xz
-    safe_extract pango-1.56.tar.xz pango-1.56-src
-fi
 build_component "Pango" "pango-1.56-src" "-Dintrospection=enabled -Dfontconfig=enabled" "lib/x86_64-linux-gnu/pkgconfig/pango.pc" "1.56.1"
 
-# 8. Blueprint Compiler
-if [ ! -d "blueprint-src" ]; then
-    wget -q "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz" -O blueprint.tar.gz
-fi
-safe_extract blueprint.tar.gz blueprint-src
 build_component "Blueprint" "blueprint-src" "" "bin/blueprint-compiler"
 
 # 9. Gperf
@@ -214,18 +167,15 @@ if [ ! -d "gperf-src" ]; then
 fi
 safe_extract gperf.tar.gz gperf-src
 if [ ! -f "$DEPS_PREFIX/bin/gperf" ]; then
+    echo "=== Building Gperf ==="
     cd "$REPO_ROOT/gperf-src"
     ./configure --prefix="$DEPS_PREFIX"
     make -j$(nproc)
     make install
     cd "$REPO_ROOT"
+    echo "Successfully built and installed Gperf"
 fi
 
-# 10. Libxmlb
-if [ ! -d "xmlb-src" ]; then
-    wget -q https://github.com/hughsie/libxmlb/releases/download/0.3.25/libxmlb-0.3.25.tar.xz -O xmlb.tar.xz
-fi
-safe_extract xmlb.tar.xz xmlb-src
 build_component "Libxmlb" "xmlb-src" "-Dtests=false -Dintrospection=false -Dgtkdoc=false" "lib/x86_64-linux-gnu/pkgconfig/xmlb.pc"
 
 # 11. Libyaml
@@ -234,12 +184,14 @@ if [ ! -d "yaml-src" ]; then
 fi
 safe_extract yaml.tar.gz yaml-src
 if [ ! -f "$DEPS_PREFIX/lib/libyaml.so" ]; then
+    echo "=== Building Libyaml ==="
     cd "$REPO_ROOT/yaml-src"
     [ -f configure ] || autoreconf -fiv || true
     ./configure --prefix="$DEPS_PREFIX" --disable-static
     make -j$(nproc)
     make install
     cd "$REPO_ROOT"
+    echo "Successfully built and installed Libyaml"
 fi
 
 # 12. AppStream
