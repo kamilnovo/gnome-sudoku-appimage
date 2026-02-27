@@ -27,7 +27,7 @@ jobs:
           python3 -m venv venv_build
           source venv_build/bin/activate
           pip install --upgrade pip
-          pip install meson ninja
+          pip install meson ninja "setuptools==65.5.0"
 
       - name: Build dependencies
         run: |
