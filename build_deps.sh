@@ -199,8 +199,16 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc" 
     if [ -d "graphene-src" ]; then rm -rf graphene-src; fi
     wget -q https://download.gnome.org/sources/graphene/1.10/graphene-1.10.8.tar.xz -O graphene.tar.xz || { echo "Failed to download graphene"; exit 1; }
     safe_extract graphene.tar.xz graphene-src
-    # Enable introspection for Graphene as GTK4 needs it
     build_component "Graphene" "graphene-src" "-Dintrospection=enabled -Dtests=false" "lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc"
+fi
+
+# 6.1 Gdk-Pixbuf
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gdk-pixbuf-2.0.pc" ]; then
+    echo "Gdk-Pixbuf not found in deps-dist, attempting to build..."
+    if [ -d "gdk-pixbuf-src" ]; then rm -rf gdk-pixbuf-src; fi
+    wget -q https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.12.tar.xz -O gdk-pixbuf.tar.xz || { echo "Failed to download gdk-pixbuf"; exit 1; }
+    safe_extract gdk-pixbuf.tar.xz gdk-pixbuf-src
+    build_component "Gdk-Pixbuf" "gdk-pixbuf-src" "-Dintrospection=enabled -Dtests=false -Dinstalled_tests=false -Dman=false" "lib/x86_64-linux-gnu/pkgconfig/gdk-pixbuf-2.0.pc"
 fi
 
 # 7. Pango 1.56.1
