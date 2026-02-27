@@ -23,7 +23,7 @@ jobs:
           sudo apt-get install -y libgee-0.8-dev libqqwing-dev libjson-glib-dev libxml2-dev libxslt-dev gettext autoconf automake libtool autopoint
           python3 -m venv venv_build
           source venv_build/bin/activate
-          pip install meson ninja
+          pip install meson ninja setuptools
 
       - name: Build dependencies
         run: |
