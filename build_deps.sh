@@ -316,8 +316,8 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
     wget -q https://download.gnome.org/sources/libadwaita/1.7/libadwaita-1.7.0.tar.xz -O adwaita.tar.xz || { echo "Failed to download libadwaita"; exit 1; }
     safe_extract adwaita.tar.xz adwaita-src
     actual_src=$(find "$REPO_ROOT/adwaita-src" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname)
-    # Patch adwaita
-    perl -0777 -pi -e "s/appstream_dep = dependency\('appstream',.*?\) /appstream_dep = dependency('appstream', required: false) # /gs" "$actual_src/src/meson.build"
+    # Fix Adwaita patch: remove suspicious '#' and use more surgical replacement
+    sed -i "s/dependency('appstream',/dependency('appstream', required: false,/" "$actual_src/src/meson.build"
     sed -i "s/gtk_dep = dependency('gtk4', version: gtk_min_version)/gtk_dep = dependency('gtk4', required: true)/" "$actual_src/src/meson.build"
     sed -i "s/'--doc-format=gi-docgen',//g" "$actual_src/src/meson.build"
     # Stub PO
