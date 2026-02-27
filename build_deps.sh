@@ -297,7 +297,9 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     if [ -d "gtk-src" ]; then rm -rf gtk-src; fi
     wget -q https://download.gnome.org/sources/gtk/4.18/gtk-4.18.1.tar.xz -O gtk.tar.xz || { echo "Failed to download gtk"; exit 1; }
     safe_extract gtk.tar.xz gtk-src
-    build_component "GTK4" "gtk-src" "-Dmedia-gstreamer=disabled -Dprint-cups=disabled -Dintrospection=enabled -Dbuild-demos=false -Dbuild-tests=false -Dbuild-examples=false -Ddocumentation=false -Dvulkan=disabled -Dx11-backend=true -Dwayland-backend=true -Dvapi=true" "lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" "4.18.1"
+    # GTK4 does NOT have a -Dvapi option. It uses -Dbuild-testutils=true or similar?
+    # Actually, it generates VAPI automatically if vapigen is found and introspection is enabled.
+    build_component "GTK4" "gtk-src" "-Dmedia-gstreamer=disabled -Dprint-cups=disabled -Dintrospection=enabled -Dbuild-demos=false -Dbuild-tests=false -Dbuild-examples=false -Ddocumentation=false -Dvulkan=disabled -Dx11-backend=true -Dwayland-backend=true" "lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" "4.18.1"
 fi
 
 # 14. Libadwaita
