@@ -48,6 +48,8 @@ build_component() {
     # Check if we should rebuild
     local rebuild=false
     if [[ "$extra_args" == *"-Dvapi=true"* ]] || [[ "$extra_args" == *"-Dvapi=enabled"* ]]; then
+        local vapi_name=$(echo $name | tr '[:upper:]' '[:lower:]')
+        # Check specific vapi files
         if [[ "$name" == "GTK4" ]] && [ ! -f "$DEPS_PREFIX/share/vala/vapi/gtk4.vapi" ]; then rebuild=true; fi
         if [[ "$name" == "Libadwaita" ]] && [ ! -f "$DEPS_PREFIX/share/vala/vapi/libadwaita-1.vapi" ]; then rebuild=true; fi
         if [[ "$name" == "AppStream" ]] && [ ! -f "$DEPS_PREFIX/share/vala/vapi/appstream.vapi" ]; then rebuild=true; fi
@@ -60,8 +62,7 @@ build_component() {
         fi
         local pkg_name=$(basename ${check_file%.pc})
         local current_version=$(PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig" pkg-config --modversion $pkg_name 2>/dev/null || echo "0")
-        if [ "$(printf '%s
-' "$min_version" "$current_version" | sort -V | head -n1)" = "$min_version" ]; then
+        if [ "$(printf '%s\n' "$min_version" "$current_version" | sort -V | head -n1)" = "$min_version" ]; then
              echo "=== $name version $current_version >= $min_version, skipping ==="
              return 0
         fi
@@ -279,9 +280,11 @@ fi
 safe_extract adwaita.tar.xz adwaita-src
 if [ ! -f "$DEPS_PREFIX/share/vala/vapi/libadwaita-1.vapi" ]; then
     actual_src=$(find "$REPO_ROOT/adwaita-src" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname)
+    # Patch adwaita
+    perl -0777 -pi -e "s/appstream_dep = dependency\('appstream',.*?\) /appstream_dep = dependency('appstream', required: false) # /gs" "$actual_src/src/meson.build"
     sed -i "s/gtk_dep = dependency('gtk4', version: gtk_min_version)/gtk_dep = dependency('gtk4', required: true)/" "$actual_src/src/meson.build"
-    perl -0777 -pi -e "s/appstream_dep = dependency\('appstream',.*?\) /appstream_dep = dependency('appstream', required: false) /gs" "$actual_src/src/meson.build"
     sed -i "s/'--doc-format=gi-docgen',//g" "$actual_src/src/meson.build"
+    # Stub PO
     sed -i "s/subdir('po')/# subdir('po')/" "$actual_src/meson.build"
     rm -f "$actual_src/subprojects/gtk.wrap"
     rm -f "$actual_src/subprojects/appstream.wrap"
