@@ -137,6 +137,12 @@ if [ ! -d "gi-src" ]; then
     wget -q https://download.gnome.org/sources/gobject-introspection/1.80/gobject-introspection-1.80.1.tar.xz -O gi.tar.xz
     safe_extract gi.tar.xz gi-src
 fi
+# Patch ccompiler.py for distutils.msvccompiler issue
+GI_COMPILER_PY="$REPO_ROOT/gi-src/giscanner/ccompiler.py"
+if [ -f "$GI_COMPILER_PY" ] && ! grep -q "setuptools._distutils.msvccompiler" "$GI_COMPILER_PY"; then
+    echo "Patching gobject-introspection ccompiler.py for distutils issue..."
+    sed -i "s/from distutils.msvccompiler import MSVCCompiler/from setuptools._distutils.msvccompiler import MSVCCompiler/" "$GI_COMPILER_PY"
+fi
 build_component "GObject-Introspection" "gi-src" "-Dbuild_introspection_data=false" "lib/x86_64-linux-gnu/pkgconfig/gobject-introspection-1.0.pc" "1.80.1"
 
 # 1. GLib 2.84.0
