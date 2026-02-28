@@ -64,7 +64,7 @@ build_component() {
         actual_src="$REPO_ROOT/$src_dir"
     else
         # Robustly find project root meson.build
-        actual_src=$(find "$REPO_ROOT/$src_dir" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname || true)
+        actual_src=$(grep -r "project(" "$REPO_ROOT/$src_dir" --include="meson.build" -l | head -n 1 | xargs dirname || true)
     fi
 
     if [ -z "$actual_src" ] || [ ! -f "$actual_src/meson.build" ]; then
@@ -76,10 +76,12 @@ build_component() {
     local build_dir="$actual_src/build"
     
     rm -rf "$build_dir"
-    "$MESON" setup "$build_dir" "$actual_src" --prefix="$DEPS_PREFIX" -Dbuildtype=release $extra_args
+    cd "$actual_src"
+    "$MESON" setup "$build_dir" . --prefix="$DEPS_PREFIX" -Dbuildtype=release $extra_args
     
     "$MESON" compile -C "$build_dir"
     "$MESON" install -C "$build_dir"
+    cd "$REPO_ROOT"
     echo "Successfully built and installed $name"
 }
 
