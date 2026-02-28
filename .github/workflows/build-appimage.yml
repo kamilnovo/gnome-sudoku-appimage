@@ -72,6 +72,11 @@ jobs:
             libsoup-3.0-dev \
             libcloudproviders-dev
           pip3 install --break-system-packages --upgrade meson ninja
+      - name: Build Dependencies
+        run: |
+          python3 -m venv venv_build
+          ./venv_build/bin/pip install meson ninja
+          bash build_deps.sh
       - name: Build
         run: bash build/build-gnome-sudoku-appimage.sh
       - name: Upload AppImage artifact
