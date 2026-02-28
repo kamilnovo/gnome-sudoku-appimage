@@ -291,8 +291,8 @@ fi
 if [ ! -f "$DEPS_PREFIX/share/vala/vapi/appstream.vapi" ]; then
     echo "AppStream not found in deps-dist, attempting to build..."
     if [ -d "appstream-src" ]; then rm -rf appstream-src; fi
-    wget -q https://github.com/xkefir/AppStream/releases/download/v1.0.4/AppStream-1.0.4.tar.xz -O appstream.tar.xz || { echo "Failed to download appstream"; exit 1; }
-    safe_extract appstream.tar.xz appstream-src
+    wget -q https://github.com/ximion/appstream/archive/refs/tags/v1.0.4.tar.gz -O appstream.tar.gz || { echo "Failed to download appstream"; exit 1; }
+    safe_extract appstream.tar.gz appstream-src
     
     actual_src=$(find "$REPO_ROOT/appstream-src" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname)
     sed -i "s/dependency('libcurl'/dependency('libcurl', required: false/" "$actual_src/meson.build" || true
