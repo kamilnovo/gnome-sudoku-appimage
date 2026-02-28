@@ -242,7 +242,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
     echo "Blueprint Compiler not found in deps-dist, attempting to build..."
     if [ -d "blueprint-src" ]; then rm -rf blueprint-src; fi
-    wget -q "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz" -O blueprint.tar.gz || { echo "Failed to download blueprint-compiler"; exit 1; }
+    wget -q "https://github.com/jwestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" -O blueprint.tar.gz || { echo "Failed to download blueprint-compiler"; exit 1; }
     safe_extract blueprint.tar.gz blueprint-src
     build_component "Blueprint" "blueprint-src" "" "bin/blueprint-compiler"
 fi
@@ -291,7 +291,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/share/vala/vapi/appstream.vapi" ]; then
     echo "AppStream not found in deps-dist, attempting to build..."
     if [ -d "appstream-src" ]; then rm -rf appstream-src; fi
-    wget -q https://www.freedesktop.org/software/appstream/releases/AppStream-1.0.4.tar.xz -O appstream.tar.xz || { echo "Failed to download appstream"; exit 1; }
+    wget -q https://github.com/xkefir/AppStream/releases/download/v1.0.4/AppStream-1.0.4.tar.xz -O appstream.tar.xz || { echo "Failed to download appstream"; exit 1; }
     safe_extract appstream.tar.xz appstream-src
     
     actual_src=$(find "$REPO_ROOT/appstream-src" -maxdepth 2 -name meson.build -exec grep -l "project(" {} + | head -n 1 | xargs dirname)
