@@ -30,6 +30,7 @@ jobs:
             pkg-config \
             wget \
             git \
+            m4 \
             valac \
             libgee-0.8-dev \
             libjson-glib-dev \

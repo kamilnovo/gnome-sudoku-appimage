@@ -16,6 +16,22 @@ export VAPIGEN="/usr/bin/vapigen"
 
 mkdir -p "$DEPS_PREFIX/bin"
 
+# 0.0 GNU M4 (needed for Flex)
+if ! which m4 > /dev/null || ! m4 --help | grep -q -- "-P"; then
+    echo "GNU M4 not found or inadequate in path, attempting to build..."
+    if [ -d "m4-src" ]; then rm -rf m4-src; fi
+    wget -q https://ftp.gnu.org/pub/gnu/m4/m4-1.4.19.tar.gz -O m4.tar.gz || { echo "Failed to download m4"; exit 1; }
+    safe_extract m4.tar.gz m4-src
+    echo "=== Building M4 ==="
+    cd "$REPO_ROOT/m4-src"
+    ./configure --prefix="$DEPS_PREFIX"
+    make -j$(nproc)
+    make install
+    cd "$REPO_ROOT"
+    echo "Successfully built and installed M4"
+    export M4="$DEPS_PREFIX/bin/m4"
+fi
+
 # Use absolute paths for Meson
 MESON="$REPO_ROOT/venv_build/bin/meson"
 
