@@ -55,6 +55,36 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc" 
     build_component "Graphene" "graphene-src" "-Dtests=false -Dintrospection=disabled"
 fi
 
+# 2.6 FreeType
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/freetype2.pc" ]; then
+    wget -q https://download.savannah.nongnu.org/releases/freetype/freetype-2.13.3.tar.xz -O freetype.tar.xz
+    safe_extract freetype.tar.xz freetype-src
+    build_component "FreeType" "freetype-src" "-Dzlib=enabled -Dbzip2=disabled -Dpng=disabled -Dharfbuzz=disabled"
+fi
+
+# 2.7 HarfBuzz
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/harfbuzz.pc" ]; then
+    wget -q https://github.com/harfbuzz/harfbuzz/releases/download/10.1.0/harfbuzz-10.1.0.tar.xz -O harfbuzz.tar.xz
+    safe_extract harfbuzz.tar.xz harfbuzz-src
+    build_component "HarfBuzz" "harfbuzz-src" "-Dtests=disabled -Ddocs=disabled -Dintrospection=disabled"
+fi
+
+# 2.8 Rebuild FreeType with HarfBuzz support
+echo "=== Rebuilding FreeType with HarfBuzz support ==="
+cd "$REPO_ROOT/freetype-src"
+rm -rf build
+env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release --wrap-mode nofallback -Dharfbuzz=enabled
+"$MESON" compile -C build
+"$MESON" install -C build
+cd "$REPO_ROOT"
+
+# 2.9 Fontconfig
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/fontconfig.pc" ]; then
+    wget -q https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz -O fontconfig.tar.xz
+    safe_extract fontconfig.tar.xz fontconfig-src
+    build_component "Fontconfig" "fontconfig-src" "-Ddoc=disabled -Dtests=disabled"
+fi
+
 # 3. Cairo
 if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/cairo.pc" ]; then
     wget -q https://www.cairographics.org/releases/cairo-1.18.2.tar.xz -O cairo.tar.xz
