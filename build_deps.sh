@@ -36,7 +36,7 @@ build_component() {
 
 # 1. GLib
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
-    wget -q https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz -O glib.tar.xz
+    wget -q https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz -O glib.tar.xz
     safe_extract glib.tar.xz glib-src
     build_component "GLib" "glib-src" "-Dtests=false"
 fi
@@ -48,6 +48,13 @@ if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/pixman-1.pc" ]; then
     build_component "Pixman" "pixman-src" "-Dtests=disabled"
 fi
 
+# 2.5 Graphene (needed by GTK4)
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/graphene-gobject-1.0.pc" ]; then
+    wget -q https://github.com/ebassi/graphene/archive/refs/tags/1.10.8.tar.gz -O graphene.tar.gz
+    safe_extract graphene.tar.gz graphene-src
+    build_component "Graphene" "graphene-src" "-Dtests=false -Dintrospection=disabled"
+fi
+
 # 3. Cairo
 if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/cairo.pc" ]; then
     wget -q https://www.cairographics.org/releases/cairo-1.18.2.tar.xz -O cairo.tar.xz
@@ -55,16 +62,23 @@ if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/cairo.pc" ]; then
     build_component "Cairo" "cairo-src" "-Dtests=disabled -Dfontconfig=enabled -Dfreetype=enabled"
 fi
 
+# 3.2 Gdk-Pixbuf
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gdk-pixbuf-2.0.pc" ]; then
+    wget -q https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.12.tar.xz -O gdk-pixbuf.tar.xz
+    safe_extract gdk-pixbuf.tar.xz gdk-pixbuf-src
+    build_component "Gdk-Pixbuf" "gdk-pixbuf-src" "-Dintrospection=disabled -Dtests=false -Dman=false"
+fi
+
 # 3.5 Pango
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pango.pc" ]; then
-    wget -q https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz -O pango.tar.xz
+    wget -q https://download.gnome.org/sources/pango/1.56/pango-1.56.1.tar.xz -O pango.tar.xz
     safe_extract pango.tar.xz pango-src
     build_component "Pango" "pango-src" "-Dintrospection=disabled"
 fi
 
 # 3.6 Wayland Protocols
 if [ ! -f "$DEPS_PREFIX/share/pkgconfig/wayland-protocols.pc" ]; then
-    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.36/wayland-protocols-1.36.tar.gz -O wayland-protocols.tar.gz
+    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.40/wayland-protocols-1.40.tar.gz -O wayland-protocols.tar.gz
     safe_extract wayland-protocols.tar.gz wayland-protocols-src
     build_component "WaylandProtocols" "wayland-protocols-src" "-Dtests=false"
 fi
@@ -85,6 +99,19 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
     build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true -Dgtk_doc=false -Dappstream=disabled"
 fi
 
+# 5.5 Libgee
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gee-0.8.pc" ]; then
+    wget -q https://download.gnome.org/sources/libgee/0.20/libgee-0.20.6.tar.xz -O libgee.tar.xz
+    safe_extract libgee.tar.xz libgee-src
+    build_component "Libgee" "libgee-src" "-Dintrospection=disabled -Dtests=false"
+fi
+
+# 5.6 Json-Glib
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/json-glib-1.0.pc" ]; then
+    wget -q https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.0.tar.xz -O json-glib.tar.xz
+    safe_extract json-glib.tar.xz json-glib-src
+    build_component "Json-Glib" "json-glib-src" "-Dintrospection=disabled -Dtests=false -Dgtk_doc=false"
+fi
 
 # 6. Blueprint
 if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then

@@ -29,7 +29,8 @@ echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
 # Use our blueprint-compiler wrapper
-sed -i "s|blueprintc = find_program('blueprint-compiler', version: '>= 0.16')|blueprintc = find_program('$REPO_ROOT/blueprint-wrapper.sh')|" meson.build || true
+sed -i "s/find_program('blueprint-compiler'.*)/find_program('$REPO_ROOT\/blueprint-wrapper.sh')/" meson.build
+grep "blueprint-wrapper.sh" meson.build || { echo "Failed to patch meson.build"; exit 1; }
 
 rm -rf build
 meson setup build --prefix=/usr --buildtype=release
@@ -61,6 +62,14 @@ if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" ]; then
 elif [ -d "$DEPS_PREFIX/lib/gdk-pixbuf-2.0" ]; then
     mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0"
     cp -r "$DEPS_PREFIX/lib/gdk-pixbuf-2.0/"* "$APPDIR/usr/lib/gdk-pixbuf-2.0/"
+fi
+
+if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu/gio/modules" ]; then
+    mkdir -p "$APPDIR/usr/lib/gio/modules"
+    cp -r "$DEPS_PREFIX/lib/x86_64-linux-gnu/gio/modules/"* "$APPDIR/usr/lib/gio/modules/"
+elif [ -d "$DEPS_PREFIX/lib/gio/modules" ]; then
+    mkdir -p "$APPDIR/usr/lib/gio/modules"
+    cp -r "$DEPS_PREFIX/lib/gio/modules/"* "$APPDIR/usr/lib/gio/modules/"
 fi
 
 # Compile GSettings schemas in the AppDir
