@@ -33,7 +33,8 @@ jobs:
             libselinux1-dev libpcre2-dev python3-dev libdbus-1-dev python3-gi \
             mount sassc libfribidi-dev libfontconfig1-dev libsqlite3-dev \
             libcups2-dev libcolord-dev liblcms2-dev librest-dev libsoup-3.0-dev \
-            libcloudproviders-dev
+            libcloudproviders-dev libdecor-0-dev libwayland-bin wayland-protocols \
+            libegl1-mesa-dev libgles2-mesa-dev
           pip3 install --break-system-packages meson ninja
 
       - name: Cache dependencies

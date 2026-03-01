@@ -41,9 +41,9 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     build_component "GLib" "glib-src" "-Dtests=false"
 fi
 
-# 2. GTK 4 (Need >= 4.12 for Sudoku 47)
+# 2. GTK 4 (Need >= 4.15.2 for modern Libadwaita)
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
-    wget -q https://download.gnome.org/sources/gtk/4.12/gtk-4.12.5.tar.xz -O gtk.tar.xz
+    wget -q https://download.gnome.org/sources/gtk/4.16/gtk-4.16.12.tar.xz -O gtk.tar.xz
     safe_extract gtk.tar.xz gtk-src
     build_component "GTK4" "gtk-src" "-Dbuild-examples=false -Dbuild-tests=false -Dintrospection=disabled -Dmedia-gstreamer=disabled"
 fi
