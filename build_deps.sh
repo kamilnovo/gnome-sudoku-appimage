@@ -77,7 +77,21 @@ if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
     build_component "Blueprint" "blueprint-src" ""
 fi
 
-# 7. qqwing
+# 7. gsettings-desktop-schemas
+if [ ! -f "$DEPS_PREFIX/share/pkgconfig/gsettings-desktop-schemas.pc" ]; then
+    wget -q https://download.gnome.org/sources/gsettings-desktop-schemas/47/gsettings-desktop-schemas-47.0.tar.xz -O gsettings.tar.xz
+    safe_extract gsettings.tar.xz gsettings-src
+    build_component "GSettingsSchemas" "gsettings-src" "-Dintrospection=disabled"
+fi
+
+# 8. adwaita-icon-theme
+if [ ! -d "$DEPS_PREFIX/share/icons/Adwaita" ]; then
+    wget -q https://download.gnome.org/sources/adwaita-icon-theme/47/adwaita-icon-theme-47.0.tar.xz -O adwaita-icons.tar.xz
+    safe_extract adwaita-icons.tar.xz adwaita-icons-src
+    build_component "AdwaitaIcons" "adwaita-icons-src" ""
+fi
+
+# 9. qqwing
 if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/qqwing.pc" ]; then
     wget -q https://qqwing.com/qqwing-1.3.4.tar.gz -O qqwing.tar.gz
     safe_extract qqwing.tar.gz qqwing-src

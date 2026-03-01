@@ -44,11 +44,29 @@ mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/lib"
 
 # Copy our custom built dependencies into AppDir - this is critical for MX Linux compatibility
-if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu" ]; then
-    find "$DEPS_PREFIX/lib/x86_64-linux-gnu" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \;
+echo "=== Bundling dependencies into AppDir ==="
+mkdir -p "$APPDIR/usr/lib"
+mkdir -p "$APPDIR/usr/share"
+
+# Copy all .so files from DEPS_PREFIX
+find "$DEPS_PREFIX/lib" -name "*.so*" -not -path "*/pkgconfig/*" -exec cp -P {} "$APPDIR/usr/lib/" \; 2>/dev/null || true
+
+# Copy share directory (icons, schemas, etc.)
+cp -r "$DEPS_PREFIX/share/"* "$APPDIR/usr/share/" 2>/dev/null || true
+
+# Copy GdkPixbuf loaders and GIO modules if they exist
+if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" ]; then
+    mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0"
+    cp -r "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/"* "$APPDIR/usr/lib/gdk-pixbuf-2.0/"
+elif [ -d "$DEPS_PREFIX/lib/gdk-pixbuf-2.0" ]; then
+    mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0"
+    cp -r "$DEPS_PREFIX/lib/gdk-pixbuf-2.0/"* "$APPDIR/usr/lib/gdk-pixbuf-2.0/"
 fi
-if [ -d "$DEPS_PREFIX/lib" ]; then
-    find "$DEPS_PREFIX/lib" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \;
+
+# Compile GSettings schemas in the AppDir
+if [ -d "$APPDIR/usr/share/glib-2.0/schemas" ]; then
+    echo "Compiling GSettings schemas..."
+    glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
 fi
 
 # Download linuxdeploy and AppImage plugin
