@@ -74,6 +74,9 @@ mv squashfs-root plugin-appimage-root
 export APPIMAGE_EXTRACT_AND_RUN=1
 export OUTPUT="Sudoku-${VERSION}-x86_64.AppImage"
 
+# Use system strip to avoid "Unable to recognise the format" errors
+export STRIP="/usr/bin/strip"
+
 # Ensure plugin is in PATH for linuxdeploy to find it
 export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
