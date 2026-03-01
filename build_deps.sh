@@ -62,6 +62,13 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pango.pc" ]; then
     build_component "Pango" "pango-src" "-Dintrospection=disabled"
 fi
 
+# 3.6 Wayland Protocols
+if [ ! -f "$DEPS_PREFIX/share/pkgconfig/wayland-protocols.pc" ]; then
+    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.38/wayland-protocols-1.38.tar.gz -O wayland-protocols.tar.gz
+    safe_extract wayland-protocols.tar.gz wayland-protocols-src
+    build_component "WaylandProtocols" "wayland-protocols-src" ""
+fi
+
 # 4. GTK 4
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     wget -q https://download.gnome.org/sources/gtk/4.16/gtk-4.16.12.tar.xz -O gtk.tar.xz
