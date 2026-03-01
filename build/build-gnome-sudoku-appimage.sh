@@ -14,6 +14,7 @@ export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX
 export LD_LIBRARY_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
 export PYTHONPATH="$DEPS_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
 export GI_TYPELIB_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/girepository-1.0:$DEPS_PREFIX/lib/girepository-1.0"
+export XDG_DATA_DIRS="$DEPS_PREFIX/share:$XDG_DATA_DIRS"
 
 echo "=== Ensuring GNOME Sudoku $VERSION source is present ==="
 if [ ! -d "$PROJECT_DIR" ]; then
