@@ -31,7 +31,7 @@ cd "$PROJECT_DIR"
 sed -i "s|blueprintc = find_program('blueprint-compiler', version: '>= 0.16')|blueprintc = find_program('$REPO_ROOT/blueprint-wrapper.sh')|" meson.build || true
 
 rm -rf build
-export VALAFLAGS="--vapidir=$DEPS_PREFIX/share/vala/vapi"
+export VALAFLAGS="--vapidir=$DEPS_PREFIX/share/vala/vapi --vapidir=/usr/share/vala/vapi"
 meson setup build --prefix=/usr --buildtype=release
 meson compile -C build
 DESTDIR="$APPDIR" meson install -C build
