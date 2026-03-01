@@ -8,14 +8,14 @@ PROJECT_DIR="$REPO_ROOT/sudoku-source-$VERSION"
 DEPS_PREFIX="$REPO_ROOT/deps-dist"
 APPDIR="$REPO_ROOT/AppDir"
 
-# Export paths for build
+# Export paths - ensure our custom build is FIRST
 export PATH="$DEPS_PREFIX/bin:$REPO_ROOT/venv_build/bin:$PATH"
 export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
 export XDG_DATA_DIRS="$DEPS_PREFIX/share:$XDG_DATA_DIRS"
 
-# Fix Vala finding packages
-export VALAFLAGS="--vapidir=$DEPS_PREFIX/share/vala/vapi --vapidir=/usr/share/vala/vapi --pkg=pangocairo"
+# Ensure valac finds our custom built VAPIs
+export VALAFLAGS="--vapidir=$DEPS_PREFIX/share/vala/vapi --pkg=pangocairo"
 
 echo "=== Ensuring GNOME Sudoku $VERSION source is present ==="
 if [ ! -d "$PROJECT_DIR" ]; then
@@ -43,12 +43,12 @@ cd "$REPO_ROOT"
 mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/lib"
 
-# Copy our custom built dependencies into AppDir
+# Copy our custom built dependencies into AppDir - this is critical for MX Linux compatibility
 if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu" ]; then
-    cp -P "$DEPS_PREFIX"/lib/x86_64-linux-gnu/*.so* "$APPDIR/usr/lib/" || true
+    find "$DEPS_PREFIX/lib/x86_64-linux-gnu" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \;
 fi
 if [ -d "$DEPS_PREFIX/lib" ]; then
-    cp -P "$DEPS_PREFIX"/lib/*.so* "$APPDIR/usr/lib/" || true
+    find "$DEPS_PREFIX/lib" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \;
 fi
 
 # Download linuxdeploy and AppImage plugin
@@ -70,8 +70,10 @@ mv squashfs-root plugin-appimage-root
 
 export APPIMAGE_EXTRACT_AND_RUN=1
 export NO_STRIP=1
+export STRIP="/usr/bin/strip"
 export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
+# Bundle everything
 ./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \

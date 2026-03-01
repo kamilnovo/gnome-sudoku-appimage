@@ -27,34 +27,43 @@ build_component() {
     echo "=== Building $name ==="
     local actual_src="$REPO_ROOT/$src_dir"
     cd "$actual_src"
+    rm -rf build
     "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release $extra_args
     "$MESON" compile -C build
     "$MESON" install -C build
     cd "$REPO_ROOT"
 }
 
-# 1. GLib (Need >= 2.76 for Sudoku 47)
+# 1. GLib (Need >= 2.76)
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     wget -q https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz -O glib.tar.xz
     safe_extract glib.tar.xz glib-src
     build_component "GLib" "glib-src" "-Dtests=false"
 fi
 
-# 2. Blueprint
-if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
-    wget -q https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz -O blueprint.tar.gz
-    safe_extract blueprint.tar.gz blueprint-src
-    build_component "Blueprint" "blueprint-src" ""
+# 2. GTK 4 (Need >= 4.12 for Sudoku 47)
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
+    wget -q https://download.gnome.org/sources/gtk/4.12/gtk-4.12.5.tar.xz -O gtk.tar.xz
+    safe_extract gtk.tar.xz gtk-src
+    build_component "GTK4" "gtk-src" "-Dtests=false -Dbuild-examples=false -Dbuild-tests=false -Dintrospection=enabled"
 fi
 
 # 3. Libadwaita (Need >= 1.6)
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
     wget -q https://download.gnome.org/sources/libadwaita/1.6/libadwaita-1.6.0.tar.xz -O adwaita.tar.xz
     safe_extract adwaita.tar.xz adwaita-src
+    # Force it to use our built GTK4 and not try to build its own
     build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true"
 fi
 
-# 4. qqwing
+# 4. Blueprint
+if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
+    wget -q https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz -O blueprint.tar.gz
+    safe_extract blueprint.tar.gz blueprint-src
+    build_component "Blueprint" "blueprint-src" ""
+fi
+
+# 5. qqwing
 if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/qqwing.pc" ]; then
     wget -q https://qqwing.com/qqwing-1.3.4.tar.gz -O qqwing.tar.gz
     safe_extract qqwing.tar.gz qqwing-src
