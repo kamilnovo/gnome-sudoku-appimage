@@ -62,11 +62,10 @@ if [ ! -f linuxdeploy-plugin-appimage.AppImage ]; then
 fi
 
 # Extract tools to avoid FUSE dependency in containers
-rm -rf squashfs-root
+rm -rf linuxdeploy-root plugin-appimage-root squashfs-root
 ./linuxdeploy --appimage-extract
 mv squashfs-root linuxdeploy-root
 
-rm -rf squashfs-root
 ./linuxdeploy-plugin-appimage.AppImage --appimage-extract
 mv squashfs-root plugin-appimage-root
 
@@ -74,12 +73,14 @@ mv squashfs-root plugin-appimage-root
 export APPIMAGE_EXTRACT_AND_RUN=1
 export OUTPUT="Sudoku-${VERSION}-x86_64.AppImage"
 
-# Use system strip to avoid "Unable to recognise the format" errors
+# CRITICAL: Disable stripping or force system strip to avoid recognition errors
+export NO_STRIP=1
 export STRIP="/usr/bin/strip"
 
 # Ensure plugin is in PATH for linuxdeploy to find it
 export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
+# Run linuxdeploy
 ./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
