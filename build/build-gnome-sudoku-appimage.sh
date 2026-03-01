@@ -45,10 +45,10 @@ mkdir -p "$APPDIR/usr/lib"
 
 # Copy our custom built dependencies into AppDir if they exist
 if [ -d "$DEPS_PREFIX/lib" ]; then
-    cp -P "$DEPS_PREFIX"/lib/*.so* "$APPDIR/usr/lib/" || true
+    find "$DEPS_PREFIX/lib" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \; || true
 fi
 if [ -d "$DEPS_PREFIX/lib64" ]; then
-    cp -P "$DEPS_PREFIX"/lib64/*.so* "$APPDIR/usr/lib/" || true
+    find "$DEPS_PREFIX/lib64" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \; || true
 fi
 
 # Download linuxdeploy if not present
@@ -58,6 +58,8 @@ if [ ! -f linuxdeploy ]; then
 fi
 
 # Use linuxdeploy to bundle everything
+# Use APPIMAGE_EXTRACT_AND_RUN to bypass FUSE requirement in containers
+export APPIMAGE_EXTRACT_AND_RUN=1
 export OUTPUT="Sudoku-${VERSION}-x86_64.AppImage"
 ./linuxdeploy --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
