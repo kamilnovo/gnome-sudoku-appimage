@@ -78,6 +78,10 @@ if [ ! -f linuxdeploy-plugin-appimage.AppImage ]; then
     wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage -O linuxdeploy-plugin-appimage.AppImage
     chmod +x linuxdeploy-plugin-appimage.AppImage
 fi
+if [ ! -f linuxdeploy-plugin-gtk.sh ]; then
+    wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh -O linuxdeploy-plugin-gtk.sh
+    chmod +x linuxdeploy-plugin-gtk.sh
+fi
 
 # Extract tools to avoid FUSE dependency
 rm -rf linuxdeploy-root plugin-appimage-root squashfs-root
@@ -92,10 +96,12 @@ export STRIP="/usr/bin/strip"
 export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
 # Bundle everything
+# Note: --plugin gtk will handle many GTK specific things
 ./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
+    --plugin gtk \
     --output appimage
 
 echo "AppImage created."
