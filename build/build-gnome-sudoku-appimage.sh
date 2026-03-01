@@ -8,10 +8,10 @@ PROJECT_DIR="$REPO_ROOT/sudoku-source-$VERSION"
 DEPS_PREFIX="$REPO_ROOT/deps-dist"
 APPDIR="$REPO_ROOT/AppDir"
 
-# Export paths for build - include lib64 for Fedora
+# Export paths for build
 export PATH="$DEPS_PREFIX/bin:$REPO_ROOT/venv_build/bin:$PATH"
-export PKG_CONFIG_PATH="$DEPS_PREFIX/lib64/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$DEPS_PREFIX/lib64:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
+export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
 export XDG_DATA_DIRS="$DEPS_PREFIX/share:$XDG_DATA_DIRS"
 
 # Fix Vala finding packages
@@ -43,15 +43,15 @@ cd "$REPO_ROOT"
 mkdir -p "$APPDIR/usr/bin"
 mkdir -p "$APPDIR/usr/lib"
 
-# Copy our custom built dependencies into AppDir if they exist
-if [ -d "$DEPS_PREFIX/lib" ]; then
-    find "$DEPS_PREFIX/lib" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \; || true
+# Copy our custom built dependencies into AppDir
+if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu" ]; then
+    cp -P "$DEPS_PREFIX"/lib/x86_64-linux-gnu/*.so* "$APPDIR/usr/lib/" || true
 fi
-if [ -d "$DEPS_PREFIX/lib64" ]; then
-    find "$DEPS_PREFIX/lib64" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \; || true
+if [ -d "$DEPS_PREFIX/lib" ]; then
+    cp -P "$DEPS_PREFIX"/lib/*.so* "$APPDIR/usr/lib/" || true
 fi
 
-# Download linuxdeploy and its AppImage plugin if not present
+# Download linuxdeploy and AppImage plugin
 if [ ! -f linuxdeploy ]; then
     wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
     chmod +x linuxdeploy
@@ -61,30 +61,21 @@ if [ ! -f linuxdeploy-plugin-appimage.AppImage ]; then
     chmod +x linuxdeploy-plugin-appimage.AppImage
 fi
 
-# Extract tools to avoid FUSE dependency in containers
+# Extract tools to avoid FUSE dependency
 rm -rf linuxdeploy-root plugin-appimage-root squashfs-root
 ./linuxdeploy --appimage-extract
 mv squashfs-root linuxdeploy-root
-
 ./linuxdeploy-plugin-appimage.AppImage --appimage-extract
 mv squashfs-root plugin-appimage-root
 
-# Use extracted tools
 export APPIMAGE_EXTRACT_AND_RUN=1
-export OUTPUT="Sudoku-${VERSION}-x86_64.AppImage"
-
-# CRITICAL: Disable stripping or force system strip to avoid recognition errors
 export NO_STRIP=1
-export STRIP="/usr/bin/strip"
-
-# Ensure plugin is in PATH for linuxdeploy to find it
 export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
-# Run linuxdeploy
 ./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
     --output appimage
 
-echo "AppImage created: $OUTPUT"
+echo "AppImage created."

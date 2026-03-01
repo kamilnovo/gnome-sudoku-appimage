@@ -4,28 +4,13 @@ set -e
 # Setup paths
 export REPO_ROOT="$PWD"
 export DEPS_PREFIX="$REPO_ROOT/deps-dist"
-# Force our prefix to be FIRST in all paths
 export PATH="$DEPS_PREFIX/bin:$REPO_ROOT/venv_build/bin:$PATH"
-export PKG_CONFIG_PATH="$DEPS_PREFIX/lib64/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:$PKG_CONFIG_PATH"
-export LD_LIBRARY_PATH="$DEPS_PREFIX/lib64:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
-export PYTHONPATH="$DEPS_PREFIX/lib/python3/site-packages:$PYTHONPATH"
+export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:$PKG_CONFIG_PATH"
+export LD_LIBRARY_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
+export PYTHONPATH="$DEPS_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
 
 mkdir -p "$DEPS_PREFIX/bin"
-
-# Use absolute paths for Meson
 MESON="$REPO_ROOT/venv_build/bin/meson"
-
-check_dep() {
-    local pkg=$1
-    local version=$2
-    if pkg-config --atleast-version="$version" "$pkg"; then
-        echo "System $pkg is adequate (>= $version)"
-        return 0
-    else
-        echo "System $pkg is missing or too old (< $version), will build from source"
-        return 1
-    fi
-}
 
 safe_extract() {
     local tarball=$1
@@ -39,66 +24,44 @@ build_component() {
     local name=$1
     local src_dir=$2
     local extra_args=$3
-    local check_file=$4
-
     echo "=== Building $name ==="
-    
     local actual_src="$REPO_ROOT/$src_dir"
-    if [ ! -f "$actual_src/meson.build" ]; then
-        actual_src=$(grep -r "project(" "$REPO_ROOT/$src_dir" --include="meson.build" -l | head -n 1 | xargs dirname || true)
-    fi
-
-    if [ -z "$actual_src" ] || [ ! -f "$actual_src/meson.build" ]; then
-        echo "Error: Could not find root meson.build in $src_dir"
-        exit 1
-    fi
-    
-    actual_src=$(realpath "$actual_src")
-    local build_dir="$actual_src/build"
-    
-    rm -rf "$build_dir"
     cd "$actual_src"
-    "$MESON" setup "$build_dir" . --prefix="$DEPS_PREFIX" --libdir="lib" -Dbuildtype=release $extra_args
-    
-    "$MESON" compile -C "$build_dir"
-    "$MESON" install -C "$build_dir"
+    "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release $extra_args
+    "$MESON" compile -C build
+    "$MESON" install -C build
     cd "$REPO_ROOT"
-    echo "Successfully built and installed $name"
 }
 
-# 1. Blueprint Compiler (always needed)
+# 1. GLib (Need >= 2.76 for Sudoku 47)
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
+    wget -q https://download.gnome.org/sources/glib/2.78/glib-2.78.0.tar.xz -O glib.tar.xz
+    safe_extract glib.tar.xz glib-src
+    build_component "GLib" "glib-src" "-Dtests=false"
+fi
+
+# 2. Blueprint
 if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
-    echo "Building Blueprint Compiler..."
-    if [ -d "blueprint-src" ]; then rm -rf blueprint-src; fi
     wget -q https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz -O blueprint.tar.gz
     safe_extract blueprint.tar.gz blueprint-src
-    build_component "Blueprint" "blueprint-src" "" "bin/blueprint-compiler"
+    build_component "Blueprint" "blueprint-src" ""
 fi
 
-# 2. Libadwaita (check if system has >= 1.6)
-if ! check_dep libadwaita-1 1.6; then
-    if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/libadwaita-1.pc" ]; then
-        echo "Building Libadwaita from source..."
-        if [ -d "adwaita-src" ]; then rm -rf adwaita-src; fi
-        wget -q https://download.gnome.org/sources/libadwaita/1.7/libadwaita-1.7.0.tar.xz -O adwaita.tar.xz
-        safe_extract adwaita.tar.xz adwaita-src
-        build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true" "lib/pkgconfig/libadwaita-1.pc"
-    fi
+# 3. Libadwaita (Need >= 1.6)
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
+    wget -q https://download.gnome.org/sources/libadwaita/1.6/libadwaita-1.6.0.tar.xz -O adwaita.tar.xz
+    safe_extract adwaita.tar.xz adwaita-src
+    build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true"
 fi
 
-# 3. qqwing (if missing from system)
-if ! check_dep qqwing 1.3; then
-    if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/qqwing.pc" ]; then
-        echo "Building qqwing from source..."
-        if [ -d "qqwing-src" ]; then rm -rf qqwing-src; fi
-        wget -q https://qqwing.com/qqwing-1.3.4.tar.gz -O qqwing.tar.gz
-        safe_extract qqwing.tar.gz qqwing-src
-        cd qqwing-src
-        ./configure --prefix="$DEPS_PREFIX" --libdir="$DEPS_PREFIX/lib"
-        make -j$(nproc)
-        make install
-        cd "$REPO_ROOT"
-    fi
+# 4. qqwing
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/qqwing.pc" ]; then
+    wget -q https://qqwing.com/qqwing-1.3.4.tar.gz -O qqwing.tar.gz
+    safe_extract qqwing.tar.gz qqwing-src
+    cd qqwing-src
+    ./configure --prefix="$DEPS_PREFIX"
+    make -j$(nproc) install
+    cd "$REPO_ROOT"
 fi
 
 echo "All dependencies prepared in $DEPS_PREFIX"

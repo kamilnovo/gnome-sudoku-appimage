@@ -10,7 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     container:
-      image: fedora:41
+      image: debian:bookworm
     permissions:
       contents: write
     defaults:
@@ -18,27 +18,47 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v4
-      - name: Install dependencies
+      
+      - name: Install system dependencies
         run: |
-          dnf install -y --skip-unavailable \
-            gcc gcc-c++ make cmake ninja-build pkgconf-pkg-config wget git m4 vala \
-            libgee-devel json-glib-devel qqwing-devel yelp-tools itstool gettext \
-            libxml2-devel desktop-file-utils gobject-introspection-devel glib2-devel \
-            pango-devel cairo-devel gdk-pixbuf2-devel libepoxy-devel graphene-devel \
-            wayland-devel libX11-devel libxkbcommon-devel vulkan-loader-devel \
-            libffi-devel zlib-devel libmount-devel libselinux-devel pcre2-devel \
-            python3-devel dbus-devel python3-gobject python3-pip file \
-            fribidi-devel fontconfig-devel sqlite-devel cups-devel \
-            colord-devel lcms2-devel rest-devel libsoup3-devel \
-            libcloudproviders-devel libadwaita-devel gtk4-devel
-          pip3 install meson
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            build-essential python3-pip python3-setuptools python3-venv \
+            ninja-build pkg-config wget git m4 valac file \
+            libgee-0.8-dev libjson-glib-dev libqqwing-dev yelp-tools itstool gettext \
+            libxml2-utils libxml2-dev desktop-file-utils libgirepository1.0-dev \
+            libglib2.0-dev libpango1.0-dev libcairo2-dev libgdk-pixbuf-2.0-dev \
+            libepoxy-dev libgraphene-1.0-dev libwayland-dev libx11-dev \
+            libxkbcommon-dev libvulkan-dev libffi-dev zlib1g-dev libmount-dev \
+            libselinux1-dev libpcre2-dev python3-dev libdbus-1-dev python3-gi \
+            mount sassc libfribidi-dev libfontconfig1-dev libsqlite3-dev \
+            libcups2-dev libcolord-dev liblcms2-dev librest-dev libsoup-3.0-dev \
+            libcloudproviders-dev
+          pip3 install --break-system-packages meson ninja
+
+      - name: Cache dependencies
+        id: cache-deps
+        uses: actions/cache@v4
+        with:
+          path: deps-dist
+          key: ${{ runner.os }}-deps-v1-${{ hashFiles('build_deps.sh') }}
+
       - name: Build Dependencies
+        if: steps.cache-deps.outputs.cache-hit != 'true'
         run: |
           python3 -m venv venv_build
           ./venv_build/bin/pip install meson ninja
           bash build_deps.sh
-      - name: Build
-        run: bash build/build-gnome-sudoku-appimage.sh
+
+      - name: Build and package Sudoku
+        run: |
+          # Ensure venv exists for meson even on cache hit
+          if [ ! -d "venv_build" ]; then
+            python3 -m venv venv_build
+            ./venv_build/bin/pip install meson ninja
+          fi
+          bash build/build-gnome-sudoku-appimage.sh
+
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
