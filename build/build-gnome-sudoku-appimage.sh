@@ -58,10 +58,11 @@ if [ ! -f linuxdeploy ]; then
 fi
 
 # Use linuxdeploy to bundle everything
-# Use APPIMAGE_EXTRACT_AND_RUN to bypass FUSE requirement in containers
-export APPIMAGE_EXTRACT_AND_RUN=1
+# Extract AppImage to avoid FUSE dependency in containers
+./linuxdeploy --appimage-extract
 export OUTPUT="Sudoku-${VERSION}-x86_64.AppImage"
-./linuxdeploy --appdir "$APPDIR" \
+
+./squashfs-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
