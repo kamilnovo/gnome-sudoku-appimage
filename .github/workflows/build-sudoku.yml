@@ -1,4 +1,4 @@
-name: Build AppImage
+name: GNOME Sudoku AppImage CI
 on:
   push:
     branches: [ "main" ]
