@@ -45,7 +45,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     wget -q https://download.gnome.org/sources/gtk/4.12/gtk-4.12.5.tar.xz -O gtk.tar.xz
     safe_extract gtk.tar.xz gtk-src
-    build_component "GTK4" "gtk-src" "-Dtests=false -Dbuild-examples=false -Dbuild-tests=false -Dintrospection=enabled"
+    build_component "GTK4" "gtk-src" "-Dbuild-examples=false -Dbuild-tests=false -Dintrospection=enabled"
 fi
 
 # 3. Libadwaita (Need >= 1.6)
