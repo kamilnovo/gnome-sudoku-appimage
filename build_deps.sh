@@ -55,6 +55,13 @@ if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/cairo.pc" ]; then
     build_component "Cairo" "cairo-src" "-Dtests=disabled -Dfontconfig=enabled -Dfreetype=enabled"
 fi
 
+# 3.5 Pango
+if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pango.pc" ]; then
+    wget -q https://download.gnome.org/sources/pango/1.54/pango-1.54.0.tar.xz -O pango.tar.xz
+    safe_extract pango.tar.xz pango-src
+    build_component "Pango" "pango-src" "-Dintrospection=disabled"
+fi
+
 # 4. GTK 4
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     wget -q https://download.gnome.org/sources/gtk/4.16/gtk-4.16.12.tar.xz -O gtk.tar.xz
