@@ -34,6 +34,19 @@ build_component() {
     cd "$REPO_ROOT"
 }
 
+build_autotools_component() {
+    local name=$1
+    local src_dir=$2
+    local extra_args=$3
+    echo "=== Building $name (Autotools) ==="
+    local actual_src="$REPO_ROOT/$src_dir"
+    cd "$actual_src"
+    ./configure --prefix="$DEPS_PREFIX" $extra_args
+    make -j$(nproc)
+    make install
+    cd "$REPO_ROOT"
+}
+
 # 1. GLib
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     wget -q https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz -O glib.tar.xz
@@ -130,10 +143,10 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
 fi
 
 # 5.5 Libgee
-if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gee-0.8.pc" ]; then
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/gee-0.8.pc" ]; then
     wget -q https://download.gnome.org/sources/libgee/0.20/libgee-0.20.8.tar.xz -O libgee.tar.xz
     safe_extract libgee.tar.xz libgee-src
-    build_component "Libgee" "libgee-src" "-Dintrospection=disabled -Dtests=false"
+    build_autotools_component "Libgee" "libgee-src" "--disable-introspection"
 fi
 
 # 5.6 Json-Glib
