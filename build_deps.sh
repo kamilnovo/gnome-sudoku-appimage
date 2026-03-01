@@ -64,9 +64,9 @@ fi
 
 # 3.6 Wayland Protocols
 if [ ! -f "$DEPS_PREFIX/share/pkgconfig/wayland-protocols.pc" ]; then
-    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.38/wayland-protocols-1.38.tar.gz -O wayland-protocols.tar.gz
+    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.36/wayland-protocols-1.36.tar.gz -O wayland-protocols.tar.gz
     safe_extract wayland-protocols.tar.gz wayland-protocols-src
-    build_component "WaylandProtocols" "wayland-protocols-src" ""
+    build_component "WaylandProtocols" "wayland-protocols-src" "-Dtests=false"
 fi
 
 # 4. GTK 4
