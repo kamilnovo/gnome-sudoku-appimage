@@ -5,7 +5,7 @@ set -e
 export REPO_ROOT="$PWD"
 export DEPS_PREFIX="$REPO_ROOT/deps-dist"
 export PATH="$DEPS_PREFIX/bin:$REPO_ROOT/venv_build/bin:$PATH"
-export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig:$DEPS_PREFIX/lib/pkgconfig:$DEPS_PREFIX/share/pkgconfig:/usr/lib/x86_64-linux-gnu/pkgconfig:/usr/lib/pkgconfig:/usr/share/pkgconfig:$PKG_CONFIG_PATH"
 export LD_LIBRARY_PATH="$DEPS_PREFIX/lib/x86_64-linux-gnu:$DEPS_PREFIX/lib:$LD_LIBRARY_PATH"
 export PYTHONPATH="$DEPS_PREFIX/lib/python3/dist-packages:$PYTHONPATH"
 
