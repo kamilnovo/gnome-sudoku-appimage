@@ -82,8 +82,9 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
     wget -q https://download.gnome.org/sources/libadwaita/1.6/libadwaita-1.6.0.tar.xz -O adwaita.tar.xz
     safe_extract adwaita.tar.xz adwaita-src
     rm -f adwaita-src/subprojects/gtk.wrap
-    build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true -Dgtk_doc=false"
+    build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true -Dgtk_doc=false -Dappstream=disabled"
 fi
+
 
 # 6. Blueprint
 if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
