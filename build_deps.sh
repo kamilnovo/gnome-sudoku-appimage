@@ -242,7 +242,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
     echo "Blueprint Compiler not found in deps-dist, attempting to build..."
     if [ -d "blueprint-src" ]; then rm -rf blueprint-src; fi
-    wget -q "https://github.com/jwestman/blueprint-compiler/archive/refs/tags/v0.16.0.tar.gz" -O blueprint.tar.gz || { echo "Failed to download blueprint-compiler"; exit 1; }
+    wget -q "https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz" -O blueprint.tar.gz || { echo "Failed to download blueprint-compiler"; exit 1; }
     safe_extract blueprint.tar.gz blueprint-src
     build_component "Blueprint" "blueprint-src" "" "bin/blueprint-compiler"
 fi
