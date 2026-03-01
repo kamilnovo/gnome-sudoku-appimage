@@ -27,7 +27,7 @@ jobs:
             pango-devel cairo-devel gdk-pixbuf2-devel libepoxy-devel graphene-devel \
             wayland-devel libX11-devel libxkbcommon-devel vulkan-loader-devel \
             libffi-devel zlib-devel libmount-devel libselinux-devel pcre2-devel \
-            python3-devel dbus-devel python3-gobject python3-pip \
+            python3-devel dbus-devel python3-gobject python3-pip file \
             fribidi-devel fontconfig-devel sqlite-devel cups-devel \
             colord-devel lcms2-devel rest-devel libsoup3-devel \
             libcloudproviders-devel libadwaita-devel gtk4-devel
