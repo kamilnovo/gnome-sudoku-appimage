@@ -53,7 +53,8 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/libadwaita-1.pc" ]; then
     wget -q https://download.gnome.org/sources/libadwaita/1.6/libadwaita-1.6.0.tar.xz -O adwaita.tar.xz
     safe_extract adwaita.tar.xz adwaita-src
     # Force it to use our built GTK4 and not try to build its own
-    build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true"
+    rm -f adwaita-src/subprojects/gtk.wrap
+    build_component "Libadwaita" "adwaita-src" "-Dintrospection=enabled -Dtests=false -Dexamples=false -Dvapi=true -Dgtk_doc=false"
 fi
 
 # 4. Blueprint
