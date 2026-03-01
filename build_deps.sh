@@ -131,7 +131,7 @@ fi
 
 # 5.5 Libgee
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gee-0.8.pc" ]; then
-    wget -q https://download.gnome.org/sources/libgee/0.20/libgee-0.20.6.tar.xz -O libgee.tar.xz
+    wget -q https://download.gnome.org/sources/libgee/0.20/libgee-0.20.8.tar.xz -O libgee.tar.xz
     safe_extract libgee.tar.xz libgee-src
     build_component "Libgee" "libgee-src" "-Dintrospection=disabled -Dtests=false"
 fi
