@@ -51,21 +51,36 @@ if [ -d "$DEPS_PREFIX/lib64" ]; then
     find "$DEPS_PREFIX/lib64" -maxdepth 1 -name "*.so*" -exec cp -P {} "$APPDIR/usr/lib/" \; || true
 fi
 
-# Download linuxdeploy if not present
+# Download linuxdeploy and its AppImage plugin if not present
 if [ ! -f linuxdeploy ]; then
     wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
     chmod +x linuxdeploy
 fi
+if [ ! -f linuxdeploy-plugin-appimage.AppImage ]; then
+    wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage -O linuxdeploy-plugin-appimage.AppImage
+    chmod +x linuxdeploy-plugin-appimage.AppImage
+fi
 
-# Use linuxdeploy to bundle everything
-# Extract AppImage to avoid FUSE dependency in containers
+# Extract tools to avoid FUSE dependency in containers
+rm -rf squashfs-root
 ./linuxdeploy --appimage-extract
+mv squashfs-root linuxdeploy-root
+
+rm -rf squashfs-root
+./linuxdeploy-plugin-appimage.AppImage --appimage-extract
+mv squashfs-root plugin-appimage-root
+
+# Use extracted tools
+export APPIMAGE_EXTRACT_AND_RUN=1
 export OUTPUT="Sudoku-${VERSION}-x86_64.AppImage"
 
-./squashfs-root/AppRun --appdir "$APPDIR" \
+# Ensure plugin is in PATH for linuxdeploy to find it
+export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
+
+./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
-    --appimage
+    --output appimage
 
 echo "AppImage created: $OUTPUT"
