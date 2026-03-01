@@ -86,4 +86,19 @@ if ! check_dep libadwaita-1 1.6; then
     fi
 fi
 
+# 3. qqwing (if missing from system)
+if ! check_dep qqwing 1.3; then
+    if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/qqwing.pc" ]; then
+        echo "Building qqwing from source..."
+        if [ -d "qqwing-src" ]; then rm -rf qqwing-src; fi
+        wget -q https://qqwing.com/qqwing-1.3.4.tar.gz -O qqwing.tar.gz
+        safe_extract qqwing.tar.gz qqwing-src
+        cd qqwing-src
+        ./configure --prefix="$DEPS_PREFIX" --libdir="$DEPS_PREFIX/lib"
+        make -j$(nproc)
+        make install
+        cd "$REPO_ROOT"
+    fi
+fi
+
 echo "All dependencies prepared in $DEPS_PREFIX"
