@@ -28,7 +28,7 @@ build_component() {
     local actual_src="$REPO_ROOT/$src_dir"
     cd "$actual_src"
     rm -rf build
-    "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release --wrap-mode nofallback $extra_args
+    env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release --wrap-mode nofallback $extra_args
     "$MESON" compile -C build
     "$MESON" install -C build
     cd "$REPO_ROOT"
