@@ -37,8 +37,10 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS for selected field color (use blue instead of theme variable)
+# 5. Patch CSS for selected field color and earmark padding
 sed -i 's/background: shade(@accent_bg_color, 1.3);/background: #3584e4;/g' data/style.css
+echo "sudokucell { padding: 1px; }" >> data/style.css
+echo "label.earmark { padding: 1px; }" >> data/style.css
 
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
@@ -265,6 +267,7 @@ export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 export ADW_DEBUG_COLOR_SCHEME=prefer-dark
 export GTK_THEME=Adwaita:dark
 export ADW_DISABLE_PORTAL=1
+export GTK_USE_PORTAL=0
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
