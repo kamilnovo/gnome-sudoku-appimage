@@ -44,7 +44,8 @@ jobs:
             libxcb-glx0-dev libxcb-present-dev libxcb-record0-dev \
             libxcb-res0-dev libxcb-screensaver0-dev libxcb-sync-dev \
             libxcb-xf86dri0-dev libxcb-xtest0-dev libxcb-xv0-dev \
-            libxcb-xvmc0-dev libgirepository1.0-dev gobject-introspection
+            libxcb-xvmc0-dev libgirepository1.0-dev gobject-introspection \
+            libgraphviz-dev xsltproc docbook-xml docbook-xsl
           pip3 install --break-system-packages meson ninja
 
       - name: Cache dependencies
