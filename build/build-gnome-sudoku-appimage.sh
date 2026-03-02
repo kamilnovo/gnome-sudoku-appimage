@@ -17,6 +17,23 @@ export XDG_DATA_DIRS="$DEPS_PREFIX/share:$XDG_DATA_DIRS"
 # Ensure valac finds our custom built VAPIs
 export VALAFLAGS="--vapidir=$DEPS_PREFIX/share/vala/vapi --pkg=pangocairo"
 
+# Create a compatibility VAPI for older valac (0.56.0 in Bookworm)
+cat > "$REPO_ROOT/compat.vapi" <<EOF
+namespace Gtk {
+    [CCode (cname = "gtk_widget_dispose_template")]
+    public void dispose_template (GLib.Type type);
+}
+namespace Gdk {
+    [CCode (cname = "GDK_NO_MODIFIER_MASK")]
+    public const Gdk.ModifierType NO_MODIFIER_MASK;
+}
+namespace GLib {
+    [CCode (cname = "G_APPLICATION_DEFAULT_FLAGS")]
+    public const GLib.ApplicationFlags DEFAULT_FLAGS;
+}
+EOF
+export VALAFLAGS="$VALAFLAGS $REPO_ROOT/compat.vapi"
+
 echo "=== Ensuring GNOME Sudoku $VERSION source is present ==="
 if [ ! -d "$PROJECT_DIR" ]; then
     wget -q https://download.gnome.org/sources/gnome-sudoku/47/gnome-sudoku-$VERSION.tar.xz
@@ -69,6 +86,15 @@ cp -r "$DEPS_PREFIX/share/"* "$APPDIR/usr/share/" 2>/dev/null || true
 # Copy fontconfig configuration
 mkdir -p "$APPDIR/etc/fonts"
 cp -r "$DEPS_PREFIX/etc/fonts/"* "$APPDIR/etc/fonts/" 2>/dev/null || true
+
+# Copy themes from system to ensure we have standard Adwaita styles
+mkdir -p "$APPDIR/usr/share/themes"
+for theme in Adwaita HighContrast; do
+    if [ -d "/usr/share/themes/$theme" ]; then
+        echo "Bundling system theme: $theme"
+        cp -r "/usr/share/themes/$theme" "$APPDIR/usr/share/themes/"
+    fi
+done
 
 # Copy GdkPixbuf loaders and GIO modules if they exist
 for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" "$DEPS_PREFIX/lib/gdk-pixbuf-2.0"; do
@@ -156,7 +182,9 @@ fi
 # Compile GSettings schemas in the AppDir
 if [ -d "$APPDIR/usr/share/glib-2.0/schemas" ]; then
     echo "Compiling GSettings schemas..."
-    glib-compile-schemas "$APPDIR/usr/share/glib-2.0/schemas"
+    COMPILE_SCHEMAS=$(find "$DEPS_PREFIX/bin" -name "glib-compile-schemas" | head -n 1)
+    if [ -z "$COMPILE_SCHEMAS" ]; then COMPILE_SCHEMAS="glib-compile-schemas"; fi
+    env LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$DEPS_PREFIX/lib/x86_64-linux-gnu" "$COMPILE_SCHEMAS" "$APPDIR/usr/share/glib-2.0/schemas"
 fi
 
 # Download linuxdeploy and AppImage plugin
@@ -257,7 +285,7 @@ fi
 if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
     export GTK_THEME=Adwaita:dark
 else
-    export GTK_THEME=Adwaita:light
+    export GTK_THEME=Adwaita
 fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules

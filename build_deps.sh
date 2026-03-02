@@ -62,13 +62,6 @@ if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/fribidi.pc" ]; then
     build_component "FriBidi" "fribidi-src" "-Ddocs=false -Dtests=false"
 fi
 
-# 0.5 Vala
-if [ ! -f "$DEPS_PREFIX/bin/valac" ]; then
-    safe_wget https://download.gnome.org/sources/vala/0.56/vala-0.56.17.tar.xz vala.tar.xz
-    safe_extract vala.tar.xz vala-src
-    build_autotools_component "Vala" "vala-src" ""
-fi
-
 # 1. GLib
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     safe_wget https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz glib.tar.xz

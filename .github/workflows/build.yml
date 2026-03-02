@@ -47,7 +47,7 @@ jobs:
             libxcb-xvmc0-dev libgirepository1.0-dev gobject-introspection \
             libgraphviz-dev xsltproc docbook-xml docbook-xsl \
             librsvg2-dev librsvg2-common libglib2.0-bin shared-mime-info \
-            hicolor-icon-theme
+            hicolor-icon-theme gnome-themes-extra
           pip3 install --break-system-packages meson ninja
 
       - name: Cache dependencies
@@ -55,7 +55,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: deps-dist
-          key: ${{ runner.os }}-deps-v1-${{ hashFiles('build_deps.sh') }}
+          key: ${{ runner.os }}-deps-v2-${{ hashFiles('build_deps.sh') }}
 
       - name: Build Dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
