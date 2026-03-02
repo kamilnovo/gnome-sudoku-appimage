@@ -162,6 +162,8 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
 export FONTCONFIG_PATH="$HERE/etc/fonts"
+export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+export GTK_THEME=Adwaita:dark
 
 # Dynamically find the loaders.cache file
 LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
