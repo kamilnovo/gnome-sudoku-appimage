@@ -66,10 +66,6 @@ find "$DEPS_PREFIX/lib" -name "*.so*" -not -path "*/pkgconfig/*" -exec cp -P {} 
 # Copy share directory (icons, schemas, etc.)
 cp -r "$DEPS_PREFIX/share/"* "$APPDIR/usr/share/" 2>/dev/null || true
 
-# Copy fontconfig configuration
-mkdir -p "$APPDIR/etc/fonts"
-cp -r "$DEPS_PREFIX/etc/fonts/"* "$APPDIR/etc/fonts/" 2>/dev/null || true
-
 # Copy GdkPixbuf loaders and GIO modules if they exist
 for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" "$DEPS_PREFIX/lib/gdk-pixbuf-2.0"; do
     if [ -d "$mod_dir" ] && [ -n "$(ls -A "$mod_dir" 2>/dev/null)" ]; then
@@ -89,23 +85,38 @@ done
 
 # Generate GdkPixbuf loaders cache
 echo "Generating GdkPixbuf loaders cache..."
+# First, try to find and copy the system SVG loader if it exists
+SYSTEM_SVG_LOADER=$(find /usr/lib -name "libpixbufloader-svg.so" | head -n 1)
+if [ -z "$SYSTEM_SVG_LOADER" ]; then
+    SYSTEM_SVG_LOADER=$(find /usr/lib/x86_64-linux-gnu -name "libpixbufloader-svg.so" | head -n 1)
+fi
+
+if [ -n "$SYSTEM_SVG_LOADER" ]; then
+    LOADERS_DEST=$(find "$APPDIR/usr/lib" -name "loaders" -type d | head -n 1)
+    if [ -n "$LOADERS_DEST" ]; then
+        echo "Copying system SVG loader from $SYSTEM_SVG_LOADER to $LOADERS_DEST"
+        cp "$SYSTEM_SVG_LOADER" "$LOADERS_DEST/"
+        # Also bundle the main librsvg library
+        LIBRSVG_LIB=$(ldd "$SYSTEM_SVG_LOADER" | grep "librsvg" | awk '{print $3}')
+        if [ -n "$LIBRSVG_LIB" ] && [ -f "$LIBRSVG_LIB" ]; then
+            echo "Bundling main librsvg from $LIBRSVG_LIB"
+            cp -L "$LIBRSVG_LIB" "$APPDIR/usr/lib/"
+        fi
+    fi
+fi
+
 PIXBUF_BINARY_DIR=$(find "$APPDIR/usr/lib" -name "gdk-pixbuf-2.0" -type d | head -n 1)
 if [ -n "$PIXBUF_BINARY_DIR" ]; then
     # Find the queryloaders tool
     QUERYLOADERS=$(find "$DEPS_PREFIX/bin" -name "gdk-pixbuf-query-loaders" | head -n 1)
     if [ -n "$QUERYLOADERS" ]; then
-        # We need to run it pointing to the loaders in AppDir
-        # and adjust paths to be relative to the AppDir
         LOADERS_DIR=$(find "$PIXBUF_BINARY_DIR" -name "loaders" -type d | head -n 1)
         if [ -n "$LOADERS_DIR" ]; then
             ABI_DIR=$(dirname "$LOADERS_DIR")
             mkdir -p "$ABI_DIR"
-            # Run queryloaders and fix paths to be relative to @executable_path/.. or similar
-            # For AppImage, they should be relative to the AppRun location or absolute within AppDir
-            # linuxdeploy usually handles this, but we are doing it manually to be sure.
             env LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$DEPS_PREFIX/lib/x86_64-linux-gnu" "$QUERYLOADERS" "$LOADERS_DIR/"*.so > "$ABI_DIR/loaders.cache"
-            # Make paths relative to the cache file
-            sed -i "s#$APPDIR##g" "$ABI_DIR/loaders.cache"
+            # Use a placeholder for runtime patching
+            sed -i "s#$APPDIR#@APPDIR@#g" "$ABI_DIR/loaders.cache"
         fi
     fi
 fi
@@ -143,52 +154,43 @@ export STRIP="/usr/bin/strip"
 export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
 # Bundle everything
-# Note: --plugin gtk will handle many GTK specific things
 ./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
-    --plugin gtk \
-    --output appimage
+    --plugin gtk
+
+# Ensure icon is in root
+cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" "$APPDIR/org.gnome.Sudoku.svg" 2>/dev/null || true
+ln -s org.gnome.Sudoku.svg "$APPDIR/.DirIcon" 2>/dev/null || true
+cp "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" "$APPDIR/" 2>/dev/null || true
 
 # Overwrite the AppRun created by linuxdeploy with our own improved version
 cat > "$APPDIR/AppRun" <<'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 
+# Create a temporary directory for patched config files
+CONF_TMP=$(mktemp -d)
+trap "rm -rf $CONF_TMP" EXIT
+
+# Patch loaders.cache at runtime
+LOADERS_CACHE_TPL=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
+if [ -n "$LOADERS_CACHE_TPL" ]; then
+    sed "s#@APPDIR@#$HERE#g" "$LOADERS_CACHE_TPL" > "$CONF_TMP/loaders.cache"
+    export GDK_PIXBUF_MODULE_FILE="$CONF_TMP/loaders.cache"
+fi
+
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
-export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
-export FONTCONFIG_PATH="$HERE/etc/fonts"
 export ADW_DEBUG_COLOR_SCHEME=prefer-dark
 export GTK_THEME=Adwaita:dark
-
-# Dynamically find the loaders.cache file
-LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
-if [ -n "$LOADERS_CACHE" ]; then
-    export GDK_PIXBUF_MODULE_FILE="$LOADERS_CACHE"
-fi
-
-# Ensure gdk-pixbuf cache is up to date if we are in a writable env, 
-# but usually we just rely on the bundled one.
-# If it doesn't exist, try to create it (though AppDir is usually read-only in AppImage)
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
-
-# Re-run linuxdeploy just to wrap the AppDir into an AppImage again with our new AppRun
-# Actually, it's better to just run the AppImage creation part if we can, 
-# but linuxdeploy handles it well. 
-# We need to tell linuxdeploy NOT to overwrite our AppRun.
-# Alternatively, we use the --custom-apprun flag if available, but linuxdeploy version varies.
-
-# Let's just use the manual way to trigger appimagetool if needed, 
-# but linuxdeploy's --output appimage is convenient.
-# To avoid overwriting AppRun, we can run linuxdeploy first (done above) 
-# and then overwrite AppRun and run appimagetool.
 
 if [ ! -f appimagetool ]; then
     wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
@@ -197,6 +199,7 @@ fi
 ./appimagetool --appimage-extract
 mv squashfs-root appimagetool-root
 
-./appimagetool-root/AppRun "$APPDIR" gnome-sudoku-x86_64.AppImage
+rm -f *.AppImage
+./appimagetool-root/AppRun "$APPDIR" GNOME_Sudoku-x86_64.AppImage
 
-echo "AppImage created."
+echo "AppImage created: GNOME_Sudoku-x86_64.AppImage"
