@@ -46,7 +46,8 @@ jobs:
             libxcb-xf86dri0-dev libxcb-xtest0-dev libxcb-xv0-dev \
             libxcb-xvmc0-dev libgirepository1.0-dev gobject-introspection \
             libgraphviz-dev xsltproc docbook-xml docbook-xsl \
-            librsvg2-dev libglib2.0-bin shared-mime-info
+            librsvg2-dev librsvg2-common libglib2.0-bin shared-mime-info \
+            hicolor-icon-theme
           pip3 install --break-system-packages meson ninja
 
       - name: Cache dependencies

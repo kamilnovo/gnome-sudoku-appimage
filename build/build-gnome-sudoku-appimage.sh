@@ -89,6 +89,17 @@ done
 
 # Generate GdkPixbuf loaders cache
 echo "Generating GdkPixbuf loaders cache..."
+# First, try to find and copy the system SVG loader if it exists
+# This is a hack to avoid building librsvg from source (which is huge/Rust)
+SYSTEM_SVG_LOADER=$(find /usr/lib -name "libpixbufloader-svg.so" | head -n 1)
+if [ -n "$SYSTEM_SVG_LOADER" ]; then
+    LOADERS_DEST=$(find "$APPDIR/usr/lib" -name "loaders" -type d | head -n 1)
+    if [ -n "$LOADERS_DEST" ]; then
+        echo "Copying system SVG loader from $SYSTEM_SVG_LOADER to $LOADERS_DEST"
+        cp "$SYSTEM_SVG_LOADER" "$LOADERS_DEST/"
+    fi
+fi
+
 PIXBUF_BINARY_DIR=$(find "$APPDIR/usr/lib" -name "gdk-pixbuf-2.0" -type d | head -n 1)
 if [ -n "$PIXBUF_BINARY_DIR" ]; then
     # Find the queryloaders tool
@@ -176,13 +187,14 @@ export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$HERE/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
+export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
+export FONTCONFIG_PATH="$HERE/etc/fonts"
+export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+export GTK_THEME=Adwaita:dark
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 
-# Default to dark mode if no preference is set, but allow switching
-if [ -z "$ADW_DEBUG_COLOR_SCHEME" ] && [ -z "$GTK_THEME" ]; then
-    export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-    export GTK_THEME=Adwaita:dark
-fi
+# Set GIO_EXTRA_MODULES to point to our bundled modules
+export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
 
 # Dynamically find the loaders.cache and GDK_PIXBUF_MODULEDIR
 LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
@@ -191,8 +203,12 @@ if [ -n "$LOADERS_CACHE" ]; then
     export GDK_PIXBUF_MODULEDIR="$(dirname "$LOADERS_CACHE")"
 fi
 
-# Ensure icon theme is picked up
+# Ensure icon theme is picked up and hicolor is first
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
+
+# Help Adwaita find its resources
+export GTK_THEME=Adwaita:dark
+export ADW_DEBUG_COLOR_SCHEME=prefer-dark
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF

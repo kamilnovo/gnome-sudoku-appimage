@@ -117,7 +117,7 @@ cd "$REPO_ROOT"
 if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/fontconfig.pc" ]; then
     safe_wget https://www.freedesktop.org/software/fontconfig/release/fontconfig-2.15.0.tar.xz fontconfig.tar.xz
     safe_extract fontconfig.tar.xz fontconfig-src
-    build_component "Fontconfig" "fontconfig-src" "-Ddoc=disabled -Dtests=disabled"
+    build_component "Fontconfig" "fontconfig-src" "-Ddoc=disabled -Dtests=disabled --sysconfdir=/etc --localstatedir=/var"
 fi
 
 # 3. Cairo
