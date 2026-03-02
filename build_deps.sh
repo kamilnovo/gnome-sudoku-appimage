@@ -152,7 +152,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     safe_wget https://download.gnome.org/sources/gtk/4.16/gtk-4.16.12.tar.xz gtk.tar.xz
     safe_extract gtk.tar.xz gtk-src
-    build_component "GTK4" "gtk-src" "-Dbuild-examples=false -Dbuild-tests=false -Dintrospection=enabled -Dvapi=true -Dmedia-gstreamer=disabled -Dvulkan=disabled"
+    build_component "GTK4" "gtk-src" "-Dbuild-examples=false -Dbuild-tests=false -Dintrospection=enabled -Dmedia-gstreamer=disabled -Dvulkan=disabled"
 fi
 
 
