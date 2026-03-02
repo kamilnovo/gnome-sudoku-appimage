@@ -29,11 +29,19 @@ echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
 # Use our blueprint-compiler wrapper
-# Try a few common patterns or just look for 'blueprint-compiler'
-sed -i "s#find_program(['\"]blueprint-compiler['\"].*)#find_program('$REPO_ROOT/blueprint-wrapper.sh')#" meson.build
-if ! grep -q "blueprint-wrapper.sh" meson.build; then
-    echo "Failed to patch meson.build. Content of meson.build near blueprint-compiler:"
-    grep -C 5 "blueprint-compiler" meson.build || echo "blueprint-compiler not found in meson.build"
+# Find which meson.build contains blueprint-compiler
+PATCH_FILE=$(grep -l "blueprint-compiler" $(find . -name "meson.build") | head -n 1)
+if [ -n "$PATCH_FILE" ]; then
+    echo "Patching $PATCH_FILE..."
+    sed -i "s#find_program(['\"]blueprint-compiler['\"].*)#find_program('$REPO_ROOT/blueprint-wrapper.sh')#" "$PATCH_FILE"
+    if ! grep -q "blueprint-wrapper.sh" "$PATCH_FILE"; then
+        echo "Failed to patch $PATCH_FILE. Content near blueprint-compiler:"
+        grep -C 5 "blueprint-compiler" "$PATCH_FILE"
+        exit 1
+    fi
+else
+    echo "blueprint-compiler not found in any meson.build files. Listing all meson.build files:"
+    find . -name "meson.build"
     exit 1
 fi
 
