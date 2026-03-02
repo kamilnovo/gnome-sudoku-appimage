@@ -37,30 +37,6 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS for theme awareness
-# We use separate hardcoded values for both to ensure perfect contrast and visibility.
-cat > data/style.css <<EOF
-/* Light Mode */
-grid.board { border: 1px solid #333; background: #333; }
-grid.block { background: #999; }
-sudokucell { background: #fff; }
-sudokucell > label { color: #000; }
-sudokucell.fixed { background: #eee; }
-sudokucell.selected { background: #3584e4; }
-sudokucell.highlight-coord { background: #EDEDED; }
-EOF
-
-cat > data/style-dark.css <<EOF
-/* Dark Mode */
-grid.board { border: 1px solid #000; background: #000; }
-grid.block { background: #555; }
-sudokucell { background: #333; }
-sudokucell > label { color: #eee; }
-sudokucell.fixed { background: #222; }
-sudokucell.selected { background: #1c71d8; }
-sudokucell.highlight-coord { background: #444; }
-EOF
-
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
