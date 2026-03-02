@@ -167,7 +167,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/json-glib-1.0.pc" ]; then
     wget -q https://download.gnome.org/sources/json-glib/1.10/json-glib-1.10.0.tar.xz -O json-glib.tar.xz
     safe_extract json-glib.tar.xz json-glib-src
-    build_component "Json-Glib" "json-glib-src" "-Dintrospection=disabled -Dtests=false -Dgtk_doc=false"
+    build_component "Json-Glib" "json-glib-src" "-Dintrospection=disabled -Dtests=false -Ddocumentation=disabled"
 fi
 
 # 6. Blueprint
