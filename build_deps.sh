@@ -194,7 +194,7 @@ fi
 
 # 7. gsettings-desktop-schemas
 if [ ! -f "$DEPS_PREFIX/share/pkgconfig/gsettings-desktop-schemas.pc" ]; then
-    safe_wget https://download.gnome.org/sources/gsettings-desktop-schemas/47/gsettings-desktop-schemas-47.0.tar.xz gsettings.tar.xz
+    safe_wget https://download.gnome.org/sources/gsettings-desktop-schemas/47/gsettings-desktop-schemas-47.1.tar.xz gsettings.tar.xz
     safe_extract gsettings.tar.xz gsettings-src
     build_component "GSettingsSchemas" "gsettings-src" "-Dintrospection=disabled"
 fi
