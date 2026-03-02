@@ -41,7 +41,7 @@ sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]
 # We use separate hardcoded values for both to ensure perfect contrast and visibility.
 cat > data/style.css <<EOF
 /* Light Mode */
-grid.board { border: 2px solid #333; background: #333; }
+grid.board { border: 1px solid #333; background: #333; }
 grid.block { background: #999; }
 sudokucell { background: #fff; }
 sudokucell > label { color: #000; }
@@ -52,7 +52,7 @@ EOF
 
 cat > data/style-dark.css <<EOF
 /* Dark Mode */
-grid.board { border: 2px solid #000; background: #000; }
+grid.board { border: 1px solid #000; background: #000; }
 grid.block { background: #555; }
 sudokucell { background: #333; }
 sudokucell > label { color: #eee; }
@@ -283,14 +283,8 @@ export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$HERE/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
-
-# Force libadwaita to look at local settings/env vars
-export ADW_DISABLE_PORTAL=1
-
-# Default to dark mode if no choice is made (matches successful build 94 behavior)
-if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
-    export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-fi
+export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+export GTK_THEME=Adwaita:dark
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
