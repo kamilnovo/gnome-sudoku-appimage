@@ -92,11 +92,12 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name == 'main' && 'latest' || github.ref_name }}
+          tag_name: ${{ github.ref_name == 'main' && format('continuous-{0}', github.run_number) || github.ref_name }}
+          name: ${{ github.ref_name == 'main' && format('GNOME Sudoku 47.1.1 (Build {0})', github.run_number) || format('GNOME Sudoku {0}', github.ref_name) }}
           files: "*.AppImage"
           generate_release_notes: true
-          draft: true
+          draft: false
           prerelease: ${{ github.ref_name == 'main' }}
-          make_latest: ${{ github.ref_name != 'main' }}
+          make_latest: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
