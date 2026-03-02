@@ -35,7 +35,16 @@ jobs:
             libcups2-dev libcolord-dev liblcms2-dev librest-dev libsoup-3.0-dev \
             libcloudproviders-dev libdecor-0-dev libwayland-bin wayland-protocols \
             libegl1-mesa-dev libgles2-mesa-dev libdrm-dev iso-codes libpng-dev gperf \
-            appstream appstream-util libappstream-dev bison flex
+            appstream appstream-util libappstream-dev bison flex \
+            libxcb-xkb-dev libxcb-xkb1 libxcb-render0-dev libxcb-shm0-dev \
+            libxcb-xfixes0-dev libxcb-shape0-dev libxcb-randr0-dev \
+            libxcb-icccm4-dev libxcb-image0-dev libxcb-keysyms1-dev \
+            libxcb-util-dev libxcb-xinerama0-dev libxcb-composite0-dev \
+            libxcb-cursor-dev libxcb-damage0-dev libxcb-dpms0-dev \
+            libxcb-glx0-dev libxcb-present-dev libxcb-record0-dev \
+            libxcb-res0-dev libxcb-screensaver0-dev libxcb-sync-dev \
+            libxcb-xf86dri0-dev libxcb-xtest0-dev libxcb-xv0-dev \
+            libxcb-xvmc0-dev
           pip3 install --break-system-packages meson ninja
 
       - name: Cache dependencies
