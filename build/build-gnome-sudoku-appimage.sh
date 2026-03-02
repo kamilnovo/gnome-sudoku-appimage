@@ -129,9 +129,27 @@ if [ -n "$PIXBUF_BINARY_DIR" ]; then
             # For AppImage, they should be relative to the AppRun location or absolute within AppDir
             # linuxdeploy usually handles this, but we are doing it manually to be sure.
             env LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$DEPS_PREFIX/lib/x86_64-linux-gnu" "$QUERYLOADERS" "$LOADERS_DIR/"*.so > "$ABI_DIR/loaders.cache"
-            # Make paths relative to the cache file
-            sed -i "s#$APPDIR##g" "$ABI_DIR/loaders.cache"
+            # Use a placeholder for the AppDir path
+            sed -i "s#$APPDIR#@APPDIR@#g" "$ABI_DIR/loaders.cache"
         fi
+    fi
+fi
+
+# Patch bundled fonts.conf to use our bundled fonts and config
+if [ -f "$APPDIR/etc/fonts/fonts.conf" ]; then
+    echo "Patching fonts.conf..."
+    # Remove system paths and use relative ones or environment variables
+    # This is a bit complex, but we can at least try to make it look in the AppDir
+    sed -i "s#$DEPS_PREFIX#@APPDIR@/usr#g" "$APPDIR/etc/fonts/fonts.conf"
+    sed -i 's#<dir>/usr/share/fonts</dir>#<dir>@APPDIR@/usr/share/fonts</dir>#' "$APPDIR/etc/fonts/fonts.conf"
+fi
+
+# Also bundle the main librsvg library if we found the loader
+if [ -n "$SYSTEM_SVG_LOADER" ]; then
+    LIBRSVG_LIB=$(ldd "$SYSTEM_SVG_LOADER" | grep "librsvg" | awk '{print $3}')
+    if [ -n "$LIBRSVG_LIB" ] && [ -f "$LIBRSVG_LIB" ]; then
+        echo "Bundling main librsvg from $LIBRSVG_LIB"
+        cp -L "$LIBRSVG_LIB" "$APPDIR/usr/lib/"
     fi
 fi
 
@@ -203,12 +221,29 @@ cat > "$APPDIR/AppRun" <<'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 
+# Create a temporary directory for patched config files
+CONF_TMP=$(mktemp -d)
+trap "rm -rf $CONF_TMP" EXIT
+
+# Patch loaders.cache at runtime
+LOADERS_CACHE_TPL=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
+if [ -n "$LOADERS_CACHE_TPL" ]; then
+    sed "s#@APPDIR@#$HERE#g" "$LOADERS_CACHE_TPL" > "$CONF_TMP/loaders.cache"
+    export GDK_PIXBUF_MODULE_FILE="$CONF_TMP/loaders.cache"
+    export GDK_PIXBUF_MODULEDIR="$(dirname "$LOADERS_CACHE_TPL")"
+fi
+
+# Patch fonts.conf at runtime
+if [ -f "$HERE/etc/fonts/fonts.conf" ]; then
+    sed "s#@APPDIR@#$HERE#g" "$HERE/etc/fonts/fonts.conf" > "$CONF_TMP/fonts.conf"
+    export FONTCONFIG_FILE="$CONF_TMP/fonts.conf"
+    export FONTCONFIG_PATH="$HERE/etc/fonts"
+fi
+
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$HERE/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
-export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
-export FONTCONFIG_PATH="$HERE/etc/fonts"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 
 # Force libadwaita to look at local settings/env vars
@@ -222,26 +257,14 @@ fi
 if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
     export GTK_THEME=Adwaita:dark
 else
-    # This will allow switching to light mode if prefer-light is set
     export GTK_THEME=Adwaita:light
 fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
 
-# Dynamically find the loaders.cache and GDK_PIXBUF_MODULEDIR
-LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
-if [ -n "$LOADERS_CACHE" ]; then
-    export GDK_PIXBUF_MODULE_FILE="$LOADERS_CACHE"
-    export GDK_PIXBUF_MODULEDIR="$(dirname "$LOADERS_CACHE")"
-fi
-
 # Ensure icon theme is picked up and hicolor is first
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
-
-# Help Adwaita find its resources
-export GTK_THEME=Adwaita:dark
-export ADW_DEBUG_COLOR_SCHEME=prefer-dark
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
