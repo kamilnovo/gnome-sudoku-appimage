@@ -37,6 +37,22 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
+# 5. Patch CSS for theme awareness
+# Merge style-dark.css into style.css using @media (prefers-color-scheme: dark)
+# This ensures dark mode works even if Libadwaita state detection is quirky in AppImage
+echo "@media (prefers-color-scheme: dark) {" >> data/style.css
+cat data/style-dark.css >> data/style.css
+echo "}" >> data/style.css
+
+# Fix the hardcoded grid colors to be more theme-aware in both modes
+sed -i 's/background: #333;/background: @borders;/g' data/style.css
+sed -i 's/border: 2px solid #333;/border: 2px solid @borders;/g' data/style.css
+sed -i 's/background: #999;/background: @view_bg_color;/g' data/style.css
+sed -i 's/background: #CCC;/background: shade(@view_bg_color, 0.9);/g' data/style.css
+
+# Ensure labels are always legible
+echo "sudokucell > label { color: @view_fg_color; }" >> data/style.css
+
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
@@ -260,10 +276,18 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 
-# Default to dark mode if no choice is made, similar to build 94
+# Force libadwaita to look at local settings/env vars
+export ADW_DISABLE_PORTAL=1
+
+# Respect user's scheme choice if set, otherwise default to dark
 if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
     export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+fi
+
+if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
     export GTK_THEME=Adwaita:dark
+else
+    export GTK_THEME=Adwaita
 fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
