@@ -33,6 +33,9 @@ sed -i 's/dispose_template/ \/\/ dispose_template/g' src/window.vala src/prefere
 sed -i 's/Gdk.ModifierType.NO_MODIFIER_MASK/0/g' src/window.vala
 # 3. Replace DEFAULT_FLAGS (GLib 2.74+)
 sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnome-sudoku.vala
+# 4. Replace MenuButton.active (GTK 4.10+)
+sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
+sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
