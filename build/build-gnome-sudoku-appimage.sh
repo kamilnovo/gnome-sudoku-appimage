@@ -37,10 +37,9 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS - minimal changes to original style
-# Only fix the selection color and add subtle padding for earmarks
+# 5. Patch CSS - fix selection color and add earmark padding
+# We keep the rest of the style original to get the "light board" look
 sed -i 's/background: shade(@accent_bg_color, 1.3);/background: #3584e4;/g' data/style.css
-# Add earmark padding without changing grid structure
 echo "label.earmark { padding: 1px; }" >> data/style.css
 
 echo "=== Building GNOME Sudoku $VERSION ==="
@@ -262,11 +261,12 @@ export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
-export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 export ADW_DEBUG_COLOR_SCHEME=prefer-dark
 export GTK_THEME=Adwaita:dark
-export ADW_DISABLE_PORTAL=1
+
+# Use system GIO modules as fallback for portal/URI support
+export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules:/usr/lib/x86_64-linux-gnu/gio/modules"
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
