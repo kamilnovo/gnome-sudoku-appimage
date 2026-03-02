@@ -37,12 +37,6 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS for theme awareness (fix white-on-grey)
-sed -i 's/background: #333;/background: @borders;/g' data/style.css
-sed -i 's/border: 2px solid #333;/border: 2px solid @borders;/g' data/style.css
-sed -i 's/background: #999;/background: @view_bg_color;/g' data/style.css
-sed -i 's/background: #CCC;/background: shade(@view_bg_color, 0.9);/g' data/style.css
-
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
@@ -87,15 +81,6 @@ cp -r "$DEPS_PREFIX/share/"* "$APPDIR/usr/share/" 2>/dev/null || true
 # Copy fontconfig configuration
 mkdir -p "$APPDIR/etc/fonts"
 cp -r "$DEPS_PREFIX/etc/fonts/"* "$APPDIR/etc/fonts/" 2>/dev/null || true
-
-# Copy themes from system to ensure we have standard Adwaita styles
-mkdir -p "$APPDIR/usr/share/themes"
-for theme in Adwaita HighContrast; do
-    if [ -d "/usr/share/themes/$theme" ]; then
-        echo "Bundling system theme: $theme"
-        cp -r "/usr/share/themes/$theme" "$APPDIR/usr/share/themes/"
-    fi
-done
 
 # Copy GdkPixbuf loaders and GIO modules if they exist
 for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" "$DEPS_PREFIX/lib/gdk-pixbuf-2.0"; do
@@ -275,21 +260,10 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 
-# Force libadwaita to look at local settings/env vars
-export ADW_DISABLE_PORTAL=1
-
-# Respect user's scheme choice if set, otherwise default to dark
+# Default to dark mode if no choice is made, similar to build 94
 if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
     export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-fi
-
-if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
     export GTK_THEME=Adwaita:dark
-elif [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-light" ]; then
-    export GTK_THEME=Adwaita:light
-else
-    # Default/fallback
-    export GTK_THEME=Adwaita
 fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
