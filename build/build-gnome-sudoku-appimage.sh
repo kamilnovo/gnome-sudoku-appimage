@@ -28,7 +28,7 @@ fi
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
-# Use our blueprint-compiler wrapper
+# Use our blueprint-compiler wrapper (optional for version 47.1.1)
 # Find which meson.build contains blueprint-compiler
 PATCH_FILE=$(grep -l "blueprint-compiler" $(find . -name "meson.build") | head -n 1)
 if [ -n "$PATCH_FILE" ]; then
@@ -40,9 +40,7 @@ if [ -n "$PATCH_FILE" ]; then
         exit 1
     fi
 else
-    echo "blueprint-compiler not found in any meson.build files. Listing all meson.build files:"
-    find . -name "meson.build"
-    exit 1
+    echo "blueprint-compiler not found in any meson.build files. Skipping patch (expected for v47.1.1)."
 fi
 
 rm -rf build
