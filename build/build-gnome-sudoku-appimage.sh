@@ -154,13 +154,15 @@ export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 # Update icon cache
 if [ -d "$APPDIR/usr/share/icons/hicolor" ]; then
     echo "Updating icon cache..."
+    # Ensure hicolor theme is valid
+    mkdir -p "$APPDIR/usr/share/icons/hicolor"
     gtk-update-icon-cache -f -t "$APPDIR/usr/share/icons/hicolor" || true
 fi
 
 # Ensure the icon is in the root of AppDir (appimagetool looks for it there)
-# and also that it's named correctly for the desktop file.
-cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" "$APPDIR/" 2>/dev/null || \
-cp "$APPDIR/usr/share/icons/hicolor/48x48/apps/org.gnome.Sudoku.png" "$APPDIR/" 2>/dev/null || true
+# GNOME Sudoku uses org.gnome.Sudoku.svg
+cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" "$APPDIR/org.gnome.Sudoku.svg" 2>/dev/null || true
+ln -s org.gnome.Sudoku.svg "$APPDIR/.DirIcon" 2>/dev/null || true
 
 # Copy desktop file to root
 cp "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" "$APPDIR/" 2>/dev/null || true
@@ -174,9 +176,13 @@ export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$HERE/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
-export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-export GTK_THEME=Adwaita:dark
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
+
+# Default to dark mode if no preference is set, but allow switching
+if [ -z "$ADW_DEBUG_COLOR_SCHEME" ] && [ -z "$GTK_THEME" ]; then
+    export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+    export GTK_THEME=Adwaita:dark
+fi
 
 # Dynamically find the loaders.cache and GDK_PIXBUF_MODULEDIR
 LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
@@ -184,6 +190,9 @@ if [ -n "$LOADERS_CACHE" ]; then
     export GDK_PIXBUF_MODULE_FILE="$LOADERS_CACHE"
     export GDK_PIXBUF_MODULEDIR="$(dirname "$LOADERS_CACHE")"
 fi
+
+# Ensure icon theme is picked up
+export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
