@@ -38,20 +38,33 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Patch CSS for theme awareness
-# Merge style-dark.css into style.css using @media (prefers-color-scheme: dark)
-# This ensures dark mode works even if Libadwaita state detection is quirky in AppImage
-echo "@media (prefers-color-scheme: dark) {" >> data/style.css
-cat data/style-dark.css >> data/style.css
-echo "}" >> data/style.css
+# We want to keep style.css as the base, and only apply style-dark.css via media query.
+# IMPORTANT: Remove the previous attempts to patch data/style.css to start clean.
+cat > data/style.css <<EOF
+/* Base styles (Light Mode) */
+grid.board { border: 2px solid #333; background: #333; }
+grid.block { background: #999; }
+sudokucell { background: white; }
+sudokucell > label { color: black; }
+sudokucell.fixed { background: #CCC; }
+sudokucell.selected { background: #3584e4; }
+sudokucell.highlight-coord { background: #EDEDED; }
 
-# Fix the hardcoded grid colors to be more theme-aware in both modes
-sed -i 's/background: #333;/background: @borders;/g' data/style.css
-sed -i 's/border: 2px solid #333;/border: 2px solid @borders;/g' data/style.css
-sed -i 's/background: #999;/background: @view_bg_color;/g' data/style.css
-sed -i 's/background: #CCC;/background: shade(@view_bg_color, 0.9);/g' data/style.css
+@media (prefers-color-scheme: dark) {
+  /* Dark Mode Overrides */
+  grid.board { background: #747474; border: 2px solid #747474; }
+  grid.block { background: #5c5c5c; }
+  sudokucell { background: #444444; }
+  sudokucell > label { color: white; }
+  sudokucell.fixed { background: #333333; }
+  sudokucell.selected { background: #1c71d8; }
+  sudokucell.highlight-coord { background: #535353; }
+}
 
-# Ensure labels are always legible
-echo "sudokucell > label { color: @view_fg_color; }" >> data/style.css
+/* Force grid lines to be visible */
+grid.board { padding: 1px; }
+grid.block { margin: 1px; }
+EOF
 
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
@@ -279,15 +292,13 @@ export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 # Force libadwaita to look at local settings/env vars
 export ADW_DISABLE_PORTAL=1
 
-# Respect user's scheme choice if set, otherwise default to dark
-if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
-    export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-fi
-
-if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
-    export GTK_THEME=Adwaita:dark
-else
-    export GTK_THEME=Adwaita
+# Respect user's scheme choice if set
+if [ -n "$ADW_DEBUG_COLOR_SCHEME" ]; then
+    if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
+        export GTK_THEME=Adwaita:dark
+    else
+        export GTK_THEME=Adwaita:light
+    fi
 fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
