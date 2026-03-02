@@ -83,6 +83,29 @@ for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gio/modules" "$DEPS_PREFIX/lib
     fi
 done
 
+# Generate GdkPixbuf loaders cache
+echo "Generating GdkPixbuf loaders cache..."
+PIXBUF_BINARY_DIR=$(find "$APPDIR/usr/lib" -name "gdk-pixbuf-2.0" -type d | head -n 1)
+if [ -n "$PIXBUF_BINARY_DIR" ]; then
+    # Find the queryloaders tool
+    QUERYLOADERS=$(find "$DEPS_PREFIX/bin" -name "gdk-pixbuf-query-loaders" | head -n 1)
+    if [ -n "$QUERYLOADERS" ]; then
+        # We need to run it pointing to the loaders in AppDir
+        # and adjust paths to be relative to the AppDir
+        LOADERS_DIR=$(find "$PIXBUF_BINARY_DIR" -name "loaders" -type d | head -n 1)
+        if [ -n "$LOADERS_DIR" ]; then
+            ABI_DIR=$(dirname "$LOADERS_DIR")
+            mkdir -p "$ABI_DIR"
+            # Run queryloaders and fix paths to be relative to @executable_path/.. or similar
+            # For AppImage, they should be relative to the AppRun location or absolute within AppDir
+            # linuxdeploy usually handles this, but we are doing it manually to be sure.
+            env LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$DEPS_PREFIX/lib/x86_64-linux-gnu" "$QUERYLOADERS" "$LOADERS_DIR/"*.so > "$ABI_DIR/loaders.cache"
+            # Make paths relative to the cache file
+            sed -i "s#$APPDIR##g" "$ABI_DIR/loaders.cache"
+        fi
+    fi
+fi
+
 # Compile GSettings schemas in the AppDir
 if [ -d "$APPDIR/usr/share/glib-2.0/schemas" ]; then
     echo "Compiling GSettings schemas..."
@@ -123,5 +146,49 @@ export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
     --plugin gtk \
     --output appimage
+
+# Overwrite the AppRun created by linuxdeploy with our own improved version
+cat > "$APPDIR/AppRun" <<'EOF'
+#!/bin/bash
+HERE="$(dirname "$(readlink -f "${0}")")"
+
+export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
+export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
+
+# Dynamically find the loaders.cache file
+LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
+if [ -n "$LOADERS_CACHE" ]; then
+    export GDK_PIXBUF_MODULE_FILE="$LOADERS_CACHE"
+fi
+
+# Ensure gdk-pixbuf cache is up to date if we are in a writable env, 
+# but usually we just rely on the bundled one.
+# If it doesn't exist, try to create it (though AppDir is usually read-only in AppImage)
+
+exec "$HERE/usr/bin/gnome-sudoku" "$@"
+EOF
+chmod +x "$APPDIR/AppRun"
+
+# Re-run linuxdeploy just to wrap the AppDir into an AppImage again with our new AppRun
+# Actually, it's better to just run the AppImage creation part if we can, 
+# but linuxdeploy handles it well. 
+# We need to tell linuxdeploy NOT to overwrite our AppRun.
+# Alternatively, we use the --custom-apprun flag if available, but linuxdeploy version varies.
+
+# Let's just use the manual way to trigger appimagetool if needed, 
+# but linuxdeploy's --output appimage is convenient.
+# To avoid overwriting AppRun, we can run linuxdeploy first (done above) 
+# and then overwrite AppRun and run appimagetool.
+
+if [ ! -f appimagetool ]; then
+    wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
+    chmod +x appimagetool
+fi
+./appimagetool --appimage-extract
+mv squashfs-root appimagetool-root
+
+./appimagetool-root/AppRun "$APPDIR" gnome-sudoku-x86_64.AppImage
 
 echo "AppImage created."
