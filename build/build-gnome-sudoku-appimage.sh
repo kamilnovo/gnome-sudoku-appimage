@@ -66,6 +66,10 @@ find "$DEPS_PREFIX/lib" -name "*.so*" -not -path "*/pkgconfig/*" -exec cp -P {} 
 # Copy share directory (icons, schemas, etc.)
 cp -r "$DEPS_PREFIX/share/"* "$APPDIR/usr/share/" 2>/dev/null || true
 
+# Copy fontconfig configuration
+mkdir -p "$APPDIR/etc/fonts"
+cp -r "$DEPS_PREFIX/etc/fonts/"* "$APPDIR/etc/fonts/" 2>/dev/null || true
+
 # Copy GdkPixbuf loaders and GIO modules if they exist
 for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" "$DEPS_PREFIX/lib/gdk-pixbuf-2.0"; do
     if [ -d "$mod_dir" ] && [ -n "$(ls -A "$mod_dir" 2>/dev/null)" ]; then
@@ -156,6 +160,8 @@ export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
+export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
+export FONTCONFIG_PATH="$HERE/etc/fonts"
 
 # Dynamically find the loaders.cache file
 LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
