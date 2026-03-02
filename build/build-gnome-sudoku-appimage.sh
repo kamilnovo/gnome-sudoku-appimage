@@ -17,23 +17,6 @@ export XDG_DATA_DIRS="$DEPS_PREFIX/share:$XDG_DATA_DIRS"
 # Ensure valac finds our custom built VAPIs
 export VALAFLAGS="--vapidir=$DEPS_PREFIX/share/vala/vapi --pkg=pangocairo"
 
-# Create a compatibility VAPI for older valac (0.56.0 in Bookworm)
-cat > "$REPO_ROOT/compat.vapi" <<EOF
-namespace Gtk {
-    [CCode (cname = "gtk_widget_dispose_template")]
-    public void dispose_template (GLib.Type type);
-}
-namespace Gdk {
-    [CCode (cname = "GDK_NO_MODIFIER_MASK")]
-    public const Gdk.ModifierType NO_MODIFIER_MASK;
-}
-namespace GLib {
-    [CCode (cname = "G_APPLICATION_DEFAULT_FLAGS")]
-    public const GLib.ApplicationFlags DEFAULT_FLAGS;
-}
-EOF
-export VALAFLAGS="$VALAFLAGS $REPO_ROOT/compat.vapi"
-
 echo "=== Ensuring GNOME Sudoku $VERSION source is present ==="
 if [ ! -d "$PROJECT_DIR" ]; then
     wget -q https://download.gnome.org/sources/gnome-sudoku/47/gnome-sudoku-$VERSION.tar.xz
@@ -41,6 +24,15 @@ if [ ! -d "$PROJECT_DIR" ]; then
     mv gnome-sudoku-$VERSION "$PROJECT_DIR"
     rm gnome-sudoku-$VERSION.tar.xz
 fi
+
+echo "=== Patching source for compatibility with older valac ==="
+cd "$PROJECT_DIR"
+# 1. Replace dispose_template (GTK 4.8+)
+sed -i 's/dispose_template/ \/\/ dispose_template/g' src/window.vala src/preferences-dialog.vala
+# 2. Replace NO_MODIFIER_MASK (GDK 4.14+)
+sed -i 's/Gdk.ModifierType.NO_MODIFIER_MASK/0/g' src/window.vala
+# 3. Replace DEFAULT_FLAGS (GLib 2.74+)
+sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnome-sudoku.vala
 
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
