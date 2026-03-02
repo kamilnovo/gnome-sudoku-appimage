@@ -47,6 +47,13 @@ build_autotools_component() {
     cd "$REPO_ROOT"
 }
 
+# 0. FriBidi (Needed by Pango)
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/fribidi.pc" ]; then
+    wget -q https://github.com/fribidi/fribidi/releases/download/v1.0.16/fribidi-1.0.16.tar.xz -O fribidi.tar.xz
+    safe_extract fribidi.tar.xz fribidi-src
+    build_component "FriBidi" "fribidi-src" "-Ddocs=false -Dtests=false"
+fi
+
 # 1. GLib
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     wget -q https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz -O glib.tar.xz
@@ -112,6 +119,13 @@ if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gdk-pixbuf-2.0.pc" ]; the
     build_component "Gdk-Pixbuf" "gdk-pixbuf-src" "-Dintrospection=disabled -Dtests=false -Dman=false"
 fi
 
+# 3.3 libxkbcommon (Needed by GTK4)
+if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/xkbcommon.pc" ]; then
+    wget -q https://github.com/xkbcommon/libxkbcommon/archive/refs/tags/xkbcommon-1.8.0.tar.gz -O xkbcommon.tar.gz
+    safe_extract xkbcommon.tar.gz xkbcommon-src
+    build_component "libxkbcommon" "xkbcommon-src" "-Denable-wayland=true -Denable-x11=true -Denable-docs=false"
+fi
+
 # 3.5 Pango
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pango.pc" ]; then
     wget -q https://download.gnome.org/sources/pango/1.56/pango-1.56.1.tar.xz -O pango.tar.xz
@@ -121,7 +135,7 @@ fi
 
 # 3.6 Wayland Protocols
 if [ ! -f "$DEPS_PREFIX/share/pkgconfig/wayland-protocols.pc" ]; then
-    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.40/wayland-protocols-1.40.tar.gz -O wayland-protocols.tar.gz
+    wget -q https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.43/wayland-protocols-1.43.tar.gz -O wayland-protocols.tar.gz
     safe_extract wayland-protocols.tar.gz wayland-protocols-src
     build_component "WaylandProtocols" "wayland-protocols-src" "-Dtests=false"
 fi
