@@ -37,6 +37,12 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
+# 5. Patch CSS for theme awareness (fix white-on-grey)
+sed -i 's/background: #333;/background: @borders;/g' data/style.css
+sed -i 's/border: 2px solid #333;/border: 2px solid @borders;/g' data/style.css
+sed -i 's/background: #999;/background: @view_bg_color;/g' data/style.css
+sed -i 's/background: #CCC;/background: shade(@view_bg_color, 0.9);/g' data/style.css
+
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
@@ -279,7 +285,10 @@ fi
 
 if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
     export GTK_THEME=Adwaita:dark
+elif [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-light" ]; then
+    export GTK_THEME=Adwaita:light
 else
+    # Default/fallback
     export GTK_THEME=Adwaita
 fi
 
