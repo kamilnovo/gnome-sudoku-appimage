@@ -29,7 +29,7 @@ echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
 
 # Use our blueprint-compiler wrapper
-sed -i "s/find_program('blueprint-compiler'.*)/find_program('$REPO_ROOT\/blueprint-wrapper.sh')/" meson.build
+sed -i "s|find_program('blueprint-compiler'.*)|find_program('$REPO_ROOT/blueprint-wrapper.sh')|" meson.build
 grep "blueprint-wrapper.sh" meson.build || { echo "Failed to patch meson.build"; exit 1; }
 
 rm -rf build
