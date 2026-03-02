@@ -92,12 +92,26 @@ echo "Generating GdkPixbuf loaders cache..."
 # First, try to find and copy the system SVG loader if it exists
 # This is a hack to avoid building librsvg from source (which is huge/Rust)
 SYSTEM_SVG_LOADER=$(find /usr/lib -name "libpixbufloader-svg.so" | head -n 1)
+if [ -z "$SYSTEM_SVG_LOADER" ]; then
+    SYSTEM_SVG_LOADER=$(find /usr/lib/x86_64-linux-gnu -name "libpixbufloader-svg.so" | head -n 1)
+fi
+
 if [ -n "$SYSTEM_SVG_LOADER" ]; then
     LOADERS_DEST=$(find "$APPDIR/usr/lib" -name "loaders" -type d | head -n 1)
     if [ -n "$LOADERS_DEST" ]; then
         echo "Copying system SVG loader from $SYSTEM_SVG_LOADER to $LOADERS_DEST"
         cp "$SYSTEM_SVG_LOADER" "$LOADERS_DEST/"
+    else
+        echo "Could not find loaders destination directory in $APPDIR/usr/lib"
     fi
+else
+    echo "WARNING: Could not find system SVG loader (libpixbufloader-svg.so). SVGs will not render!"
+fi
+
+# List loaders for debugging
+if [ -d "$LOADERS_DEST" ]; then
+    echo "Loaders in $LOADERS_DEST:"
+    ls "$LOADERS_DEST"
 fi
 
 PIXBUF_BINARY_DIR=$(find "$APPDIR/usr/lib" -name "gdk-pixbuf-2.0" -type d | head -n 1)
@@ -163,12 +177,18 @@ export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
     --plugin gtk
 
 # Update icon cache
-if [ -d "$APPDIR/usr/share/icons/hicolor" ]; then
-    echo "Updating icon cache..."
-    # Ensure hicolor theme is valid
-    mkdir -p "$APPDIR/usr/share/icons/hicolor"
-    gtk-update-icon-cache -f -t "$APPDIR/usr/share/icons/hicolor" || true
+# Use the bundled tool if available, otherwise system
+UPDATE_ICON_CACHE=$(find "$DEPS_PREFIX/bin" -name "gtk4-update-icon-cache" | head -n 1)
+if [ -z "$UPDATE_ICON_CACHE" ]; then
+    UPDATE_ICON_CACHE="gtk-update-icon-cache"
 fi
+
+for icon_dir in "$APPDIR/usr/share/icons/hicolor" "$APPDIR/usr/share/icons/Adwaita"; do
+    if [ -d "$icon_dir" ]; then
+        echo "Updating icon cache for $icon_dir..."
+        env LD_LIBRARY_PATH="$DEPS_PREFIX/lib:$DEPS_PREFIX/lib/x86_64-linux-gnu" "$UPDATE_ICON_CACHE" -f -t "$icon_dir" || true
+    fi
+done
 
 # Ensure the icon is in the root of AppDir (appimagetool looks for it there)
 # GNOME Sudoku uses org.gnome.Sudoku.svg
@@ -189,9 +209,22 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
 export FONTCONFIG_PATH="$HERE/etc/fonts"
-export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-export GTK_THEME=Adwaita:dark
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
+
+# Force libadwaita to look at local settings/env vars
+export ADW_DISABLE_PORTAL=1
+
+# Respect user's scheme choice if set, otherwise default to dark
+if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
+    export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+fi
+
+if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
+    export GTK_THEME=Adwaita:dark
+else
+    # This will allow switching to light mode if prefer-light is set
+    export GTK_THEME=Adwaita:light
+fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
