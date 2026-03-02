@@ -66,7 +66,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     safe_wget https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz glib.tar.xz
     safe_extract glib.tar.xz glib-src
-    build_component "GLib" "glib-src" "-Dtests=false -Dintrospection=enabled -Dvapi=enabled"
+    build_component "GLib" "glib-src" "-Dtests=false -Dintrospection=enabled"
 fi
 
 # 2. Pixman (for Cairo)
