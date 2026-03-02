@@ -174,7 +174,14 @@ fi
 if [ ! -f "$DEPS_PREFIX/bin/blueprint-compiler" ]; then
     wget -q https://gitlab.gnome.org/jwestman/blueprint-compiler/-/archive/v0.16.0/blueprint-compiler-v0.16.0.tar.gz -O blueprint.tar.gz
     safe_extract blueprint.tar.gz blueprint-src
-    build_component "Blueprint" "blueprint-src" ""
+    echo "=== Building Blueprint ==="
+    cd "blueprint-src"
+    rm -rf build
+    env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release --wrap-mode nofallback
+    "$MESON" compile -C build
+    # Skip post-install scripts (like pycompile.py) which often fail in this environment
+    env MESON_INSTALL_SKIP_SCRIPTS=1 "$MESON" install -C build
+    cd "$REPO_ROOT"
 fi
 
 # 7. gsettings-desktop-schemas
