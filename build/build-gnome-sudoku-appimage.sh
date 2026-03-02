@@ -144,12 +144,26 @@ export PATH="$(pwd)/plugin-appimage-root/usr/bin:$PATH"
 
 # Bundle everything
 # Note: --plugin gtk will handle many GTK specific things
+# We run linuxdeploy to prepare the AppDir, but we'll wrap it ourselves to control AppRun
 ./linuxdeploy-root/AppRun --appdir "$APPDIR" \
     --executable "$APPDIR/usr/bin/gnome-sudoku" \
     --desktop-file "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" \
     --icon-file "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" \
-    --plugin gtk \
-    --output appimage
+    --plugin gtk
+
+# Update icon cache
+if [ -d "$APPDIR/usr/share/icons/hicolor" ]; then
+    echo "Updating icon cache..."
+    gtk-update-icon-cache -f -t "$APPDIR/usr/share/icons/hicolor" || true
+fi
+
+# Ensure the icon is in the root of AppDir (appimagetool looks for it there)
+# and also that it's named correctly for the desktop file.
+cp "$APPDIR/usr/share/icons/hicolor/scalable/apps/org.gnome.Sudoku.svg" "$APPDIR/" 2>/dev/null || \
+cp "$APPDIR/usr/share/icons/hicolor/48x48/apps/org.gnome.Sudoku.png" "$APPDIR/" 2>/dev/null || true
+
+# Copy desktop file to root
+cp "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" "$APPDIR/" 2>/dev/null || true
 
 # Overwrite the AppRun created by linuxdeploy with our own improved version
 cat > "$APPDIR/AppRun" <<'EOF'
@@ -158,37 +172,22 @@ HERE="$(dirname "$(readlink -f "${0}")")"
 
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
-export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$HERE/lib:$HERE/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
-export FONTCONFIG_FILE="$HERE/etc/fonts/fonts.conf"
-export FONTCONFIG_PATH="$HERE/etc/fonts"
 export ADW_DEBUG_COLOR_SCHEME=prefer-dark
 export GTK_THEME=Adwaita:dark
+export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 
-# Dynamically find the loaders.cache file
+# Dynamically find the loaders.cache and GDK_PIXBUF_MODULEDIR
 LOADERS_CACHE=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
 if [ -n "$LOADERS_CACHE" ]; then
     export GDK_PIXBUF_MODULE_FILE="$LOADERS_CACHE"
+    export GDK_PIXBUF_MODULEDIR="$(dirname "$LOADERS_CACHE")"
 fi
-
-# Ensure gdk-pixbuf cache is up to date if we are in a writable env, 
-# but usually we just rely on the bundled one.
-# If it doesn't exist, try to create it (though AppDir is usually read-only in AppImage)
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
 chmod +x "$APPDIR/AppRun"
-
-# Re-run linuxdeploy just to wrap the AppDir into an AppImage again with our new AppRun
-# Actually, it's better to just run the AppImage creation part if we can, 
-# but linuxdeploy handles it well. 
-# We need to tell linuxdeploy NOT to overwrite our AppRun.
-# Alternatively, we use the --custom-apprun flag if available, but linuxdeploy version varies.
-
-# Let's just use the manual way to trigger appimagetool if needed, 
-# but linuxdeploy's --output appimage is convenient.
-# To avoid overwriting AppRun, we can run linuxdeploy first (done above) 
-# and then overwrite AppRun and run appimagetool.
 
 if [ ! -f appimagetool ]; then
     wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage -O appimagetool
@@ -197,6 +196,9 @@ fi
 ./appimagetool --appimage-extract
 mv squashfs-root appimagetool-root
 
-./appimagetool-root/AppRun "$APPDIR" gnome-sudoku-x86_64.AppImage
+# Remove any existing AppImages in the root to avoid confusion
+rm -f *.AppImage
 
-echo "AppImage created."
+./appimagetool-root/AppRun "$APPDIR" GNOME_Sudoku-x86_64.AppImage
+
+echo "AppImage created: GNOME_Sudoku-x86_64.AppImage"
