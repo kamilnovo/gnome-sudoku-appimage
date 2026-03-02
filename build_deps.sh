@@ -66,7 +66,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/glib-2.0.pc" ]; then
     safe_wget https://download.gnome.org/sources/glib/2.82/glib-2.82.5.tar.xz glib.tar.xz
     safe_extract glib.tar.xz glib-src
-    build_component "GLib" "glib-src" "-Dtests=false"
+    build_component "GLib" "glib-src" "-Dtests=false -Dintrospection=enabled"
 fi
 
 # 2. Pixman (for Cairo)
@@ -124,7 +124,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gdk-pixbuf-2.0.pc" ]; then
     safe_wget https://download.gnome.org/sources/gdk-pixbuf/2.42/gdk-pixbuf-2.42.12.tar.xz gdk-pixbuf.tar.xz
     safe_extract gdk-pixbuf.tar.xz gdk-pixbuf-src
-    build_component "Gdk-Pixbuf" "gdk-pixbuf-src" "-Dintrospection=disabled -Dtests=false -Dman=false"
+    build_component "Gdk-Pixbuf" "gdk-pixbuf-src" "-Dintrospection=enabled -Dtests=false -Dman=false"
 fi
 
 # 3.3 libxkbcommon (Needed by GTK4)
@@ -138,7 +138,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/pango.pc" ]; then
     safe_wget https://download.gnome.org/sources/pango/1.56/pango-1.56.1.tar.xz pango.tar.xz
     safe_extract pango.tar.xz pango-src
-    build_component "Pango" "pango-src" "-Dintrospection=disabled"
+    build_component "Pango" "pango-src" "-Dintrospection=enabled"
 fi
 
 # 3.6 Wayland Protocols
@@ -152,7 +152,7 @@ fi
 if [ ! -f "$DEPS_PREFIX/lib/x86_64-linux-gnu/pkgconfig/gtk4.pc" ]; then
     safe_wget https://download.gnome.org/sources/gtk/4.16/gtk-4.16.12.tar.xz gtk.tar.xz
     safe_extract gtk.tar.xz gtk-src
-    build_component "GTK4" "gtk-src" "-Dbuild-examples=false -Dbuild-tests=false -Dintrospection=disabled -Dmedia-gstreamer=disabled -Dvulkan=disabled"
+    build_component "GTK4" "gtk-src" "-Dbuild-examples=false -Dbuild-tests=false -Dintrospection=enabled -Dvapi=true -Dmedia-gstreamer=disabled -Dvulkan=disabled"
 fi
 
 
