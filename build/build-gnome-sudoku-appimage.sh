@@ -67,21 +67,21 @@ find "$DEPS_PREFIX/lib" -name "*.so*" -not -path "*/pkgconfig/*" -exec cp -P {} 
 cp -r "$DEPS_PREFIX/share/"* "$APPDIR/usr/share/" 2>/dev/null || true
 
 # Copy GdkPixbuf loaders and GIO modules if they exist
-if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" ]; then
-    mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0"
-    cp -r "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0/"* "$APPDIR/usr/lib/gdk-pixbuf-2.0/"
-elif [ -d "$DEPS_PREFIX/lib/gdk-pixbuf-2.0" ]; then
-    mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0"
-    cp -r "$DEPS_PREFIX/lib/gdk-pixbuf-2.0/"* "$APPDIR/usr/lib/gdk-pixbuf-2.0/"
-fi
+for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gdk-pixbuf-2.0" "$DEPS_PREFIX/lib/gdk-pixbuf-2.0"; do
+    if [ -d "$mod_dir" ] && [ -n "$(ls -A "$mod_dir" 2>/dev/null)" ]; then
+        mkdir -p "$APPDIR/usr/lib/gdk-pixbuf-2.0"
+        cp -r "$mod_dir/"* "$APPDIR/usr/lib/gdk-pixbuf-2.0/"
+        break
+    fi
+done
 
-if [ -d "$DEPS_PREFIX/lib/x86_64-linux-gnu/gio/modules" ]; then
-    mkdir -p "$APPDIR/usr/lib/gio/modules"
-    cp -r "$DEPS_PREFIX/lib/x86_64-linux-gnu/gio/modules/"* "$APPDIR/usr/lib/gio/modules/"
-elif [ -d "$DEPS_PREFIX/lib/gio/modules" ]; then
-    mkdir -p "$APPDIR/usr/lib/gio/modules"
-    cp -r "$DEPS_PREFIX/lib/gio/modules/"* "$APPDIR/usr/lib/gio/modules/"
-fi
+for mod_dir in "$DEPS_PREFIX/lib/x86_64-linux-gnu/gio/modules" "$DEPS_PREFIX/lib/gio/modules"; do
+    if [ -d "$mod_dir" ] && [ -n "$(ls -A "$mod_dir" 2>/dev/null)" ]; then
+        mkdir -p "$APPDIR/usr/lib/gio/modules"
+        cp -r "$mod_dir/"* "$APPDIR/usr/lib/gio/modules/"
+        break
+    fi
+done
 
 # Compile GSettings schemas in the AppDir
 if [ -d "$APPDIR/usr/share/glib-2.0/schemas" ]; then
