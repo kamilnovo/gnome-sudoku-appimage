@@ -38,29 +38,27 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Patch CSS for theme awareness
-# GTK4 parser does not support @media (prefers-color-scheme).
-# We must patch both style.css and style-dark.css separately.
-
+# We use separate hardcoded values for both to ensure perfect contrast and visibility.
 cat > data/style.css <<EOF
-/* Base styles (Light Mode) */
-grid.board { border: 2px solid #333; background: #333; padding: 1px; }
-grid.block { background: #999; margin: 1px; }
-sudokucell { background: white; }
-sudokucell > label { color: black; }
-sudokucell.fixed { background: #CCC; }
+/* Light Mode */
+grid.board { border: 2px solid #333; background: #333; }
+grid.block { background: #999; }
+sudokucell { background: #fff; }
+sudokucell > label { color: #000; }
+sudokucell.fixed { background: #eee; }
 sudokucell.selected { background: #3584e4; }
 sudokucell.highlight-coord { background: #EDEDED; }
 EOF
 
 cat > data/style-dark.css <<EOF
-/* Dark Mode styles */
-grid.board { background: #747474; border: 2px solid #747474; padding: 1px; }
-grid.block { background: #5c5c5c; margin: 1px; }
-sudokucell { background: #444444; }
-sudokucell > label { color: white; }
-sudokucell.fixed { background: #333333; }
+/* Dark Mode */
+grid.board { border: 2px solid #000; background: #000; }
+grid.block { background: #555; }
+sudokucell { background: #333; }
+sudokucell > label { color: #eee; }
+sudokucell.fixed { background: #222; }
 sudokucell.selected { background: #1c71d8; }
-sudokucell.highlight-coord { background: #535353; }
+sudokucell.highlight-coord { background: #444; }
 EOF
 
 echo "=== Building GNOME Sudoku $VERSION ==="
@@ -289,15 +287,9 @@ export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
 # Force libadwaita to look at local settings/env vars
 export ADW_DISABLE_PORTAL=1
 
-# Respect user's scheme choice if set, otherwise default to dark (like build 94)
+# Default to dark mode if no choice is made (matches successful build 94 behavior)
 if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
     export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-fi
-
-if [ "$ADW_DEBUG_COLOR_SCHEME" = "prefer-dark" ]; then
-    export GTK_THEME=Adwaita:dark
-else
-    export GTK_THEME=Adwaita
 fi
 
 # Set GIO_EXTRA_MODULES to point to our bundled modules
