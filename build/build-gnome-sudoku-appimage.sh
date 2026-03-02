@@ -37,26 +37,11 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS for all visual issues
-# Use hardcoded colors to avoid theme resolution issues in AppImage
-cat > data/style.css <<EOF
-/* High-contrast grid and legible labels */
-grid.board { border: 2px solid #000; background: #000; padding: 0; }
-grid.block { background: #555; margin: 1px; }
-sudokucell { background: #333; margin: 1px; }
-sudokucell > label { color: #eee; padding: 2px; }
-sudokucell.fixed { background: #222; }
-sudokucell.selected { background: #1c71d8; }
-sudokucell.highlight-coord { background: #444; }
-label.earmark { padding: 1px; font-size: 0.8em; }
-
-/* Ensure About window and other Adw widgets have padding/rounded corners */
-window, dialog { border-radius: 12px; }
-.view { padding: 12px; }
-EOF
-
-# Copy dark styles too
-cp data/style.css data/style-dark.css
+# 5. Patch CSS - minimal changes to original style
+# Only fix the selection color and add subtle padding for earmarks
+sed -i 's/background: shade(@accent_bg_color, 1.3);/background: #3584e4;/g' data/style.css
+# Add earmark padding without changing grid structure
+echo "label.earmark { padding: 1px; }" >> data/style.css
 
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
@@ -251,7 +236,6 @@ ln -s org.gnome.Sudoku.svg "$APPDIR/.DirIcon" 2>/dev/null || true
 # Copy desktop file to root
 cp "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" "$APPDIR/" 2>/dev/null || true
 
-# Overwrite the AppRun created by linuxdeploy with our own improved version
 cat > "$APPDIR/AppRun" <<'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
@@ -265,7 +249,6 @@ LOADERS_CACHE_TPL=$(find "$HERE/usr/lib" -name "loaders.cache" | head -n 1)
 if [ -n "$LOADERS_CACHE_TPL" ]; then
     sed "s#@APPDIR@#$HERE#g" "$LOADERS_CACHE_TPL" > "$CONF_TMP/loaders.cache"
     export GDK_PIXBUF_MODULE_FILE="$CONF_TMP/loaders.cache"
-    export GDK_PIXBUF_MODULEDIR="$(dirname "$LOADERS_CACHE_TPL")"
 fi
 
 # Patch fonts.conf at runtime
@@ -275,27 +258,15 @@ if [ -f "$HERE/etc/fonts/fonts.conf" ]; then
     export FONTCONFIG_PATH="$HERE/etc/fonts"
 fi
 
-# CRITICAL: Force our bundled libraries to be loaded first
-# This fixes rounded corners, padding, and links by ensuring modern libadwaita/gtk4 is used.
-export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
-LIBS_TO_PRELOAD=$(find "$HERE/usr/lib" -name "libglib-2.0.so*" -o -name "libgobject-2.0.so*" -o -name "libgtk-4.so*" -o -name "libadwaita-1.so*" | tr '\n' ':')
-export LD_PRELOAD="$LIBS_TO_PRELOAD:$LD_PRELOAD"
-
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:$XDG_DATA_DIRS"
+export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
-
-# Default to dark mode (matches build 94)
-if [ -z "$ADW_DEBUG_COLOR_SCHEME" ]; then
-    export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-    export GTK_THEME=Adwaita:dark
-fi
-
-# Disabling portals to fix links
+export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+export GTK_THEME=Adwaita:dark
 export ADW_DISABLE_PORTAL=1
-export GTK_USE_PORTAL=0
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
