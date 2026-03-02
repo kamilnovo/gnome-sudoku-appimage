@@ -85,7 +85,7 @@ fi
 
 # 2.6 FreeType
 if [ ! -f "$DEPS_PREFIX/lib/pkgconfig/freetype2.pc" ]; then
-    safe_wget https://download.savannah.nongnu.org/releases/freetype/freetype-2.13.3.tar.xz freetype.tar.xz
+    safe_wget https://download.savannah.gnu.org/releases/freetype/freetype-2.14.1.tar.xz freetype.tar.xz
     safe_extract freetype.tar.xz freetype-src
     build_component "FreeType" "freetype-src" "-Dzlib=enabled -Dbzip2=disabled -Dpng=disabled -Dharfbuzz=disabled"
 fi
@@ -101,7 +101,7 @@ fi
 echo "=== Rebuilding FreeType with HarfBuzz support ==="
 cd "$REPO_ROOT/freetype-src"
 rm -rf build
-env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release --wrap-mode nofallback -Dharfbuzz=enabled
+env PKG_CONFIG_PATH="$PKG_CONFIG_PATH" "$MESON" setup build . --prefix="$DEPS_PREFIX" -Dbuildtype=release --wrap-mode nofallback -Dharfbuzz=enabled -Dzlib=enabled -Dbzip2=disabled -Dpng=disabled
 "$MESON" compile -C build
 "$MESON" install -C build
 cd "$REPO_ROOT"
