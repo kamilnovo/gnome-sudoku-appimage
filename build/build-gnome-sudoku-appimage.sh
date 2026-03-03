@@ -38,9 +38,14 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Fix board resizing and centering
-# Remove fixed spacing and any potential margins from the game box in UI
+# Disable the dynamic margins in window.vala that cause off-centering
+sed -i 's/game_box.margin_start = margin_size;/game_box.margin_start = 0;/g' src/window.vala
+sed -i 's/game_box.margin_end = margin_size;/game_box.margin_end = 0;/g' src/window.vala
+sed -i 's/game_box.margin_top = margin_size;/game_box.margin_top = 0;/g' src/window.vala
+sed -i 's/game_box.margin_bottom = margin_size;/game_box.margin_bottom = 0;/g' src/window.vala
+
+# Remove fixed spacing from the game box in UI
 sed -i 's/spacing="25"/spacing="0"/g' data/sudoku-window.ui
-sed -i '/id="game_box"/a \                <property name="margin-start">0</property>\n                <property name="margin-end">0</property>\n                <property name="margin-top">0</property>\n                <property name="margin-bottom">0</property>' data/sudoku-window.ui
 
 # Patch view.vala to force the Overlay to expand and remove its margins
 sed -i 's/var overlay = new Overlay ();/var overlay = new Overlay (); overlay.hexpand = true; overlay.vexpand = true; overlay.margin_start = 0; overlay.margin_end = 0;/g' src/view.vala
@@ -51,7 +56,7 @@ CSS_PATCH='
 sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
 
-grid.board { margin: 0px; padding: 0px; }
+grid.board { margin: 0px; padding: 0px; border: 1px solid #333; }
 grid.block { margin: 0px; }
 sudokucell { margin: 0px; }
 
