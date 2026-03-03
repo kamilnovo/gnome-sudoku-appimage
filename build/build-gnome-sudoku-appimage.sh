@@ -32,23 +32,16 @@ sed -i 's/dispose_template/ \/\/ dispose_template/g' src/window.vala src/prefere
 # 2. Replace NO_MODIFIER_MASK (GDK 4.14+)
 sed -i 's/Gdk.ModifierType.NO_MODIFIER_MASK/0/g' src/window.vala
 # 3. Replace DEFAULT_FLAGS (GLib 2.74+)
-sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnome-sudoku.vala
+sed -i 's/ApplicationFlags.DEFAULT_FLAGS/0/g' src/gnome-sudoku.vala
 # 4. Replace MenuButton.active (GTK 4.10+)
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Fix board resizing and centering
-# Set a consistent small margin on all sides instead of 0
-sed -i 's/game_box.margin_start = margin_size;/game_box.margin_start = 6;/g' src/window.vala
-sed -i 's/game_box.margin_end = margin_size;/game_box.margin_end = 6;/g' src/window.vala
-sed -i 's/game_box.margin_top = margin_size;/game_box.margin_top = 6;/g' src/window.vala
-sed -i 's/game_box.margin_bottom = margin_size;/game_box.margin_bottom = 6;/g' src/window.vala
+# Patch the constant directly to increase minimum window size
+sed -i 's/smallest_possible_width = 360;/smallest_possible_width = 450;/g' src/window.vala
 
-# Increase minimum window size to prevent clipping
-sed -i 's/this.set_default_size (smallest_possible_width, smallest_possible_height);/this.set_default_size (450, 500);/g' src/window.vala
-sed -i 's/this.set_size_request (smallest_possible_width, smallest_possible_height);/this.set_size_request (450, 500);/g' src/window.vala
-
-# Remove fixed spacing from the game box in UI
+# Remove fixed spacing and any potential margins from the game box in UI
 sed -i 's/spacing="25"/spacing="0"/g' data/sudoku-window.ui
 
 # Patch view.vala to force the Overlay to expand and remove its margins
@@ -57,7 +50,8 @@ sed -i 's/var overlay = new Overlay ();/var overlay = new Overlay (); overlay.he
 # 6. Patch CSS - fix selection color and earmark layout
 # Use clean syntax without !important to avoid parser errors
 CSS_PATCH='
-sudokucell.selected { background-color: #3584e4; }
+/* Force blue selection */
+sudokucell.selected { background: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
 
 grid.board { margin: 0px; padding: 0px; border: 1px solid #333; }
@@ -298,8 +292,15 @@ export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
 export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
+
+# Force dark mode using Libadwaita's preference (don't set GTK_THEME as it breaks Adwaita styles)
 export ADW_DEBUG_COLOR_SCHEME=prefer-dark
-export GTK_THEME=Adwaita:dark
+
+# Completely disable portals to fix links and theme issues
+export ADW_DISABLE_PORTAL=1
+export GTK_USE_PORTAL=0
+export GIO_USE_PORTALS=0
+export G_DBUS_PROXY_FLAGS=no-indirect
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
