@@ -37,7 +37,7 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS - fix selection color and earmark layout
+# 5. Patch CSS - fix selection color, earmark layout, and About window
 # NOTE: GTK4 CSS does NOT support !important. Use specific selectors instead.
 sed -i 's/background: shade(@accent_bg_color, 1.3);/background: #3584e4;/g' data/style.css
 cat >> data/style.css <<EOF
@@ -53,6 +53,11 @@ label.earmark {
 /* Ensure the earmark grid has room at the bottom */
 sudokucell grid {
     margin-bottom: 4px;
+}
+/* Force padding and rounded corners for AdwWindow/AboutDialog */
+window.about {
+    padding: 24px;
+    border-radius: 12px;
 }
 EOF
 
@@ -249,6 +254,18 @@ ln -s org.gnome.Sudoku.svg "$APPDIR/.DirIcon" 2>/dev/null || true
 # Copy desktop file to root
 cp "$APPDIR/usr/share/applications/org.gnome.Sudoku.desktop" "$APPDIR/" 2>/dev/null || true
 
+# Create an xdg-open wrapper to fix links
+mkdir -p "$APPDIR/usr/bin"
+cat > "$APPDIR/usr/bin/xdg-open" <<'EOF'
+#!/bin/bash
+# Run the host's xdg-open outside the AppImage environment
+unset LD_LIBRARY_PATH
+unset LD_PRELOAD
+unset GIO_EXTRA_MODULES
+/usr/bin/xdg-open "$@"
+EOF
+chmod +x "$APPDIR/usr/bin/xdg-open"
+
 cat > "$APPDIR/AppRun" <<'EOF'
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
@@ -264,28 +281,20 @@ if [ -n "$LOADERS_CACHE_TPL" ]; then
     export GDK_PIXBUF_MODULE_FILE="$CONF_TMP/loaders.cache"
 fi
 
-# Patch fonts.conf at runtime
-if [ -f "$HERE/etc/fonts/fonts.conf" ]; then
-    sed "s#@APPDIR@#$HERE#g" "$HERE/etc/fonts/fonts.conf" > "$CONF_TMP/fonts.conf"
-    export FONTCONFIG_FILE="$CONF_TMP/fonts.conf"
-    export FONTCONFIG_PATH="$HERE/etc/fonts"
-fi
-
+# Set up environment
 export LD_LIBRARY_PATH="$HERE/usr/lib:$HERE/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH"
 export GSETTINGS_SCHEMA_DIR="$HERE/usr/share/glib-2.0/schemas"
 export XDG_DATA_DIRS="$HERE/usr/share:/usr/share:$XDG_DATA_DIRS"
 export GIO_MODULE_DIR="$HERE/usr/lib/gio/modules"
 export GIO_EXTRA_MODULES="$HERE/usr/lib/gio/modules"
-export XCURSOR_PATH="$HERE/usr/share/icons:$XCURSOR_PATH"
+export PATH="$HERE/usr/bin:$PATH"
 
-# Force dark mode using Libadwaita's preference (don't set GTK_THEME as it breaks Adwaita styles)
+# Force dark mode reliably
 export ADW_DEBUG_COLOR_SCHEME=prefer-dark
+export GTK_THEME=Adwaita:dark
 
-# Completely disable portals to fix links and theme issues
-export ADW_DISABLE_PORTAL=1
-export GTK_USE_PORTAL=0
-export GIO_USE_PORTALS=0
-export G_DBUS_PROXY_FLAGS=no-indirect
+# Try to set the gsetting for color scheme if possible
+gsettings set org.gnome.desktop.interface color-scheme 'prefer-dark' 2>/dev/null || true
 
 exec "$HERE/usr/bin/gnome-sudoku" "$@"
 EOF
