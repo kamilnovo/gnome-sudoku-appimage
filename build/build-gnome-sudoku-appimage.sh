@@ -38,13 +38,28 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Fix board resizing and centering
-# Patch SudokuFrame to allow proper scaling and centering
-sed -i 's/child_width = child_height = int.min (width, height);/child_width = child_height = int.min (width, height); if (child_width < 100) child_width = child_height = 100;/g' src/aspect-frame.vala
+# Remove fixed spacing from the game box in UI
+sed -i 's/spacing="25"/spacing="0"/g' data/sudoku-window.ui
 
-# 6. Patch CSS - fix selection color and earmark layout
+# Patch view.vala to force the Overlay to expand and fill the window
+sed -i 's/var overlay = new Overlay ();/var overlay = new Overlay (); overlay.hexpand = true; overlay.vexpand = true;/g' src/view.vala
+
+# 6. Patch CSS - clear all margins/padding that cause off-centering and clipping
 CSS_PATCH='
 sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
+
+/* Remove all margins that cause off-centering */
+grid.board { 
+    margin: 0 !important; 
+    padding: 0 !important;
+}
+grid.block { 
+    margin: 0 !important; 
+}
+sudokucell { 
+    margin: 0 !important; 
+}
 
 label.earmark { 
     font-size: 7px;
@@ -52,8 +67,10 @@ label.earmark {
     margin: 0;
     line-height: 1;
 }
-sudokucell grid {
-    min-height: 36px;
+/* Ensure the earmark grid has room but stay centered */
+sudokucell > grid {
+    min-height: 32px;
+    margin: auto !important;
 }
 '
 echo "$CSS_PATCH" >> data/style.css
