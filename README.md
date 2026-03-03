@@ -11,10 +11,6 @@ This project provides an easy-to-use version of GNOME Sudoku that runs on almost
     - *Or use the terminal:* `chmod +x GNOME_Sudoku-x86_64.AppImage`
 3.  **Run:** Double-click the file to start the game!
 
-## Important: Known Issues
-
-*   **Full-screen Crash:** The game may crash if you try to put it into full-screen mode. We recommend playing in a normal window for the best experience.
-
 ## Why use this version?
 
 This version is specifically built to work on both brand-new and older Linux systems (like MX Linux 23). It includes all the "behind-the-scenes" components it needs to run, so you don't have to worry about missing libraries or version conflicts.
