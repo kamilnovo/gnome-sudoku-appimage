@@ -37,23 +37,34 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch UI file to center the game board correctly
-sed -i '/id="game_box"/a \                <property name="halign">center</property>\n                <property name="valign">center</property>' data/sudoku-window.ui
+# 5. Fix board sizing and centering
+# Remove the halign/valign from UI which caused collapsing
+sed -i '/id="game_box"/!b;n;d' data/sudoku-window.ui
+sed -i '/id="game_box"/!b;n;d' data/sudoku-window.ui
 
-# 6. Patch CSS - fix selection color and earmark layout in BOTH files
+# Patch Vala to force expansion and centering of the view
+sed -i 's/view = new SudokuView (game, settings);/view = new SudokuView (game, settings); view.hexpand = true; view.vexpand = true; view.halign = Gtk.Align.CENTER; view.valign = Gtk.Align.CENTER;/g' src/window.vala
+
+# 6. Patch CSS - fix selection color, earmark layout, and cell size in BOTH files
 CSS_PATCH='
 sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
 
+/* Prevent board from collapsing too much */
+sudokucell { 
+    min-width: 40px; 
+    min-height: 40px; 
+}
+
 label.earmark { 
-    font-size: 6px;
+    font-size: 7px;
     padding: 0;
     margin: 0;
     line-height: 1;
 }
 /* Ensure the earmark grid has enough vertical space */
 sudokucell grid {
-    min-height: 34px;
+    min-height: 36px;
 }
 '
 echo "$CSS_PATCH" >> data/style.css
