@@ -38,39 +38,31 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Fix board resizing and centering
-# Remove fixed spacing from the game box in UI
+# Remove fixed spacing and any potential margins from the game box in UI
 sed -i 's/spacing="25"/spacing="0"/g' data/sudoku-window.ui
+sed -i '/id="game_box"/a \                <property name="margin-start">0</property>\n                <property name="margin-end">0</property>\n                <property name="margin-top">0</property>\n                <property name="margin-bottom">0</property>' data/sudoku-window.ui
 
-# Patch view.vala to force the Overlay to expand and fill the window
-sed -i 's/var overlay = new Overlay ();/var overlay = new Overlay (); overlay.hexpand = true; overlay.vexpand = true;/g' src/view.vala
+# Patch view.vala to force the Overlay to expand and remove its margins
+sed -i 's/var overlay = new Overlay ();/var overlay = new Overlay (); overlay.hexpand = true; overlay.vexpand = true; overlay.margin_start = 0; overlay.margin_end = 0;/g' src/view.vala
 
-# 6. Patch CSS - clear all margins/padding that cause off-centering and clipping
+# 6. Patch CSS - fix selection color and earmark layout
+# Use clean syntax without !important to avoid parser errors
 CSS_PATCH='
 sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
 
-/* Remove all margins that cause off-centering */
-grid.board { 
-    margin: 0 !important; 
-    padding: 0 !important;
-}
-grid.block { 
-    margin: 0 !important; 
-}
-sudokucell { 
-    margin: 0 !important; 
-}
+grid.board { margin: 0px; padding: 0px; }
+grid.block { margin: 0px; }
+sudokucell { margin: 0px; }
 
 label.earmark { 
     font-size: 7px;
-    padding: 0;
-    margin: 0;
+    padding: 0px;
+    margin: 0px;
     line-height: 1;
 }
-/* Ensure the earmark grid has room but stay centered */
 sudokucell > grid {
-    min-height: 32px;
-    margin: auto !important;
+    min-height: 30px;
 }
 '
 echo "$CSS_PATCH" >> data/style.css
