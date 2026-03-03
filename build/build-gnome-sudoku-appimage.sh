@@ -37,23 +37,23 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/ApplicationFlags.FLAGS_NONE/g' src/gnom
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Patch CSS - fix selection color and earmark layout
-# We append to both style.css and style-dark.css because Sudoku loads both depending on theme.
+# 5. Patch UI file to center the game board correctly
+sed -i '/id="game_box"/a \                <property name="halign">center</property>\n                <property name="valign">center</property>' data/sudoku-window.ui
+
+# 6. Patch CSS - fix selection color and earmark layout in BOTH files
 CSS_PATCH='
-/* Force blue selection - use specific selector */
 sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
 
-/* Earmark visibility - fix grid height to avoid cutting off bottom row */
-sudokucell > grid {
-    min-height: 38px;
-    margin-bottom: 2px;
-}
 label.earmark { 
-    font-size: 8px;
-    line-height: 1;
+    font-size: 6px;
     padding: 0;
     margin: 0;
+    line-height: 1;
+}
+/* Ensure the earmark grid has enough vertical space */
+sudokucell grid {
+    min-height: 34px;
 }
 '
 echo "$CSS_PATCH" >> data/style.css
