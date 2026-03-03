@@ -40,27 +40,20 @@ sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]
 # 5. Patch CSS - fix selection color and earmark layout
 # We append to both style.css and style-dark.css because Sudoku loads both depending on theme.
 CSS_PATCH='
+/* Force blue selection - use specific selector */
 sudokucell.selected { background-color: #3584e4; }
-sudokucell.selected > label { color: white; }
+sudokucell.selected label { color: #ffffff; }
 
+/* Earmark visibility - fix grid height to avoid cutting off bottom row */
+sudokucell > grid {
+    min-height: 38px;
+    margin-bottom: 2px;
+}
 label.earmark { 
-    font-size: 7px;
+    font-size: 8px;
+    line-height: 1;
     padding: 0;
     margin: 0;
-    line-height: 1;
-}
-/* Ensure the earmark grid has enough vertical space */
-sudokucell grid {
-    min-height: 36px;
-}
-/* Ensure the board is perfectly centered and doesn't cut off */
-grid.board {
-    margin: auto !important;
-}
-/* Ensure cells stay square and visible */
-sudokucell { 
-    min-width: 32px; 
-    min-height: 32px;
 }
 '
 echo "$CSS_PATCH" >> data/style.css
