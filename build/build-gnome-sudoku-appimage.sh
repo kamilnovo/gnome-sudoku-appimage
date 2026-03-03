@@ -37,7 +37,11 @@ sed -i 's/ApplicationFlags.DEFAULT_FLAGS/0/g' src/gnome-sudoku.vala
 sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
-# 5. Fix board resizing and centering
+# 5. Fix earmark layout in source - force them to fit exactly in 1/3 of the cell
+sed -i 's/earmark_width = int.max (earmark_width, min_size.width);/\/\/ earmark_width fix/g' src/cell.vala
+sed -i 's/earmark_height = int.max (earmark_height, min_size.height);/\/\/ earmark_height fix/g' src/cell.vala
+
+# 6. Fix board resizing and centering
 # Patch the constant directly to increase minimum window size
 sed -i 's/smallest_possible_width = 360;/smallest_possible_width = 450;/g' src/window.vala
 
@@ -47,25 +51,18 @@ sed -i 's/spacing="25"/spacing="0"/g' data/sudoku-window.ui
 # Patch view.vala to force the Overlay to expand and remove its margins
 sed -i 's/var overlay = new Overlay ();/var overlay = new Overlay (); overlay.hexpand = true; overlay.vexpand = true; overlay.margin_start = 0; overlay.margin_end = 0;/g' src/view.vala
 
-# 6. Patch CSS - fix selection color and earmark layout
-# Use clean syntax without !important to avoid parser errors
+# 7. Patch CSS - fix selection color and earmark layout
+# Target the sudokucell widget directly for background
 CSS_PATCH='
-/* Force blue selection */
-sudokucell.selected { background: #3584e4; }
+sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected label { color: #ffffff; }
-
-grid.board { margin: 0px; padding: 0px; border: 1px solid #333; }
-grid.block { margin: 0px; }
-sudokucell { margin: 0px; }
+sudokucell.selected label.value { color: #ffffff; }
 
 label.earmark { 
-    font-size: 7px;
+    font-size: 6px;
     padding: 0px;
     margin: 0px;
     line-height: 1;
-}
-sudokucell > grid {
-    min-height: 30px;
 }
 '
 echo "$CSS_PATCH" >> data/style.css
