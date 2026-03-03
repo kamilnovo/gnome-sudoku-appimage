@@ -1,28 +1,25 @@
-# GNOME Sudoku AppImage
+# GNOME Sudoku for Linux (AppImage)
 
-This repository provides a standalone AppImage for GNOME Sudoku 47.1.1, built with compatibility for older systems (like MX Linux 23).
+This project provides an easy-to-use version of GNOME Sudoku that runs on almost any Linux distribution (Ubuntu, Fedora, Debian, MX Linux, etc.) without needing to install any extra software.
 
-## Features
+[**Download the latest version here**](https://github.com/kamilnovo/gnome-sudoku-appimage/releases/latest)
 
-- **Standalone AppImage:** Includes all necessary GNOME/GTK dependencies.
-- **Improved Compatibility:** Patched to run on systems with older libraries (Vala, GTK 4, GLib).
-- **Visual Fixes:** Custom CSS for better selection visibility and earmark layout.
-- **Portability:** Runs without requiring system-wide installation of GNOME 47.
+## How to use it
 
-## Known Issues
+1.  **Download:** Get the `.AppImage` file from the link above.
+2.  **Make it executable:** Right-click the file, go to **Properties** > **Permissions**, and check the box that says **"Allow executing file as program"**.
+    - *Or use the terminal:* `chmod +x GNOME_Sudoku-x86_64.AppImage`
+3.  **Run:** Double-click the file to start the game!
 
-- **Full-screen Crash:** The application may crash when entering or exiting full-screen mode. We recommend using it in windowed mode for stability.
+## Important: Known Issues
 
-## Building
+*   **Full-screen Crash:** The game may crash if you try to put it into full-screen mode. We recommend playing in a normal window for the best experience.
 
-To build the AppImage locally:
+## Why use this version?
 
-1. Install dependencies listed in `.github/workflows/build.yml`.
-2. Run `./build_deps.sh` to build custom dependencies.
-3. Run `bash build/build-gnome-sudoku-appimage.sh` to create the AppImage.
+This version is specifically built to work on both brand-new and older Linux systems (like MX Linux 23). It includes all the "behind-the-scenes" components it needs to run, so you don't have to worry about missing libraries or version conflicts.
 
-The resulting AppImage will be named `GNOME_Sudoku-x86_64.AppImage`.
+---
 
-## License
-
-This build project is licensed under the same terms as GNOME Sudoku (GPL-3.0-or-later).
+### For Developers
+If you wish to build this AppImage yourself, please refer to the build scripts (`build_deps.sh` and `build/build-gnome-sudoku-appimage.sh`) and the CI configuration in `.github/workflows/build.yml`.
