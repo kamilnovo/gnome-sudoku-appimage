@@ -38,19 +38,24 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Patch CSS - fix selection color and earmark layout
-cat >> data/style.css <<EOF
-/* Force blue selection */
+# We append to both style.css and style-dark.css because Sudoku loads both depending on theme.
+CSS_PATCH='
 sudokucell.selected { background-color: #3584e4; }
 sudokucell.selected > label { color: white; }
 
-/* Earmark visibility - use small font to fit regardless of window size */
 label.earmark { 
     font-size: 7px;
     padding: 0;
     margin: 0;
     line-height: 1;
 }
-EOF
+/* Ensure the earmark grid has enough vertical space */
+sudokucell grid {
+    min-height: 36px;
+}
+'
+echo "$CSS_PATCH" >> data/style.css
+echo "$CSS_PATCH" >> data/style-dark.css
 
 echo "=== Building GNOME Sudoku $VERSION ==="
 cd "$PROJECT_DIR"
