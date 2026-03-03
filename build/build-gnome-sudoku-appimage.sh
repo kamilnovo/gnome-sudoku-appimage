@@ -53,6 +53,15 @@ label.earmark {
 sudokucell grid {
     min-height: 36px;
 }
+/* Ensure the board is perfectly centered and doesn't cut off */
+grid.board {
+    margin: auto !important;
+}
+/* Ensure cells stay square and visible */
+sudokucell { 
+    min-width: 32px; 
+    min-height: 32px;
+}
 '
 echo "$CSS_PATCH" >> data/style.css
 echo "$CSS_PATCH" >> data/style-dark.css
