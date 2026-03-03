@@ -38,11 +38,15 @@ sed -i 's/main_menu.active/main_menu.get_popover().visible/g' src/window.vala
 sed -i 's/main_menu.notify\["active"\]/main_menu.get_popover().notify["visible"]/g' src/window.vala
 
 # 5. Fix board resizing and centering
-# Disable the dynamic margins in window.vala that cause off-centering
-sed -i 's/game_box.margin_start = margin_size;/game_box.margin_start = 0;/g' src/window.vala
-sed -i 's/game_box.margin_end = margin_size;/game_box.margin_end = 0;/g' src/window.vala
-sed -i 's/game_box.margin_top = margin_size;/game_box.margin_top = 0;/g' src/window.vala
-sed -i 's/game_box.margin_bottom = margin_size;/game_box.margin_bottom = 0;/g' src/window.vala
+# Set a consistent small margin on all sides instead of 0
+sed -i 's/game_box.margin_start = margin_size;/game_box.margin_start = 6;/g' src/window.vala
+sed -i 's/game_box.margin_end = margin_size;/game_box.margin_end = 6;/g' src/window.vala
+sed -i 's/game_box.margin_top = margin_size;/game_box.margin_top = 6;/g' src/window.vala
+sed -i 's/game_box.margin_bottom = margin_size;/game_box.margin_bottom = 6;/g' src/window.vala
+
+# Increase minimum window size to prevent clipping
+sed -i 's/this.set_default_size (smallest_possible_width, smallest_possible_height);/this.set_default_size (450, 500);/g' src/window.vala
+sed -i 's/this.set_size_request (smallest_possible_width, smallest_possible_height);/this.set_size_request (450, 500);/g' src/window.vala
 
 # Remove fixed spacing from the game box in UI
 sed -i 's/spacing="25"/spacing="0"/g' data/sudoku-window.ui
